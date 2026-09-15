@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { COURTS, OPPONENT_NAMES, TIME_SLOTS } from '../data/constants'
+import { TIME_SLOTS } from '../data/constants'
 import { buildSeedGames } from '../data/games'
+import { fetchBookingsForDate, fetchCourts, type RemoteBooking } from '../lib/api'
 import { toDateKey } from '../utils/date'
-import { pickSeeded, seededRatio } from '../utils/random'
 import { getTelegramWebApp, resolveDisplayName } from '../utils/telegram'
-import type { Game, Slot, TabId, UserBooking } from '../types'
+import type { CourtInfo, Game, Slot, TabId, UserBooking } from '../types'
 import { AppContext, type AppContextValue } from './context'
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -19,23 +19,89 @@ export function AppProvider({ children }: { children: ReactNode }) {
     getTelegramWebApp()?.ready()
   }, [])
 
+  // Список кортов из Supabase. Загрузку считаем завершённой, когда courtsLoadedToken
+  // догоняет courtsReloadToken — так не приходится дёргать setState синхронно в эффекте.
+  const [courts, setCourts] = useState<CourtInfo[]>([])
+  const [courtsError, setCourtsError] = useState<string | null>(null)
+  const [courtsReloadToken, setCourtsReloadToken] = useState(0)
+  const [courtsLoadedToken, setCourtsLoadedToken] = useState(-1)
+  const courtsLoading = courtsLoadedToken !== courtsReloadToken
+
+  useEffect(() => {
+    let cancelled = false
+
+    fetchCourts()
+      .then((data) => {
+        if (cancelled) return
+        setCourts(data)
+        setCourtsError(null)
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return
+        setCourtsError(error instanceof Error ? error.message : 'Не удалось загрузить список кортов')
+      })
+      .finally(() => {
+        if (!cancelled) setCourtsLoadedToken(courtsReloadToken)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [courtsReloadToken])
+
+  // Бронирования из Supabase за выбранную дату. Тот же приём: сравниваем "запрошенный"
+  // и "загруженный" ключ запроса вместо setState в начале эффекта.
+  const [remoteBookings, setRemoteBookings] = useState<RemoteBooking[]>([])
+  const [bookingsError, setBookingsError] = useState<string | null>(null)
+  const [bookingsReloadToken, setBookingsReloadToken] = useState(0)
+  const [bookingsLoadedKey, setBookingsLoadedKey] = useState<string | null>(null)
+  const bookingsRequestKey = `${selectedDateKey}:${bookingsReloadToken}`
+  const bookingsLoading = bookingsLoadedKey !== bookingsRequestKey
+
+  useEffect(() => {
+    let cancelled = false
+    const requestKey = bookingsRequestKey
+
+    fetchBookingsForDate(selectedDateKey)
+      .then((data) => {
+        if (cancelled) return
+        setRemoteBookings(data)
+        setBookingsError(null)
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return
+        setBookingsError(error instanceof Error ? error.message : 'Не удалось загрузить бронирования')
+      })
+      .finally(() => {
+        if (!cancelled) setBookingsLoadedKey(requestKey)
+      })
+
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- requestKey производный от тех же зависимостей
+  }, [selectedDateKey, bookingsReloadToken])
+
   const getSlotsForCourt = (dateKey: string, courtId: number): Slot[] =>
     TIME_SLOTS.map((time) => {
-      const booking = userBookings.find(
+      const localBooking = userBookings.find(
         (b) => b.dateKey === dateKey && b.courtId === courtId && b.time === time,
       )
-      if (booking) {
+      if (localBooking) {
         return { time, status: 'booked', opponent: 'Игра с друзьями' }
       }
 
-      const seed = `${dateKey}-${courtId}-${time}`
-      if (seededRatio(seed) < 0.4) {
-        return { time, status: 'booked', opponent: pickSeeded(seed, OPPONENT_NAMES) }
+      const isRemoteBooked =
+        dateKey === selectedDateKey &&
+        remoteBookings.some((b) => b.courtId === courtId && b.time === time)
+      if (isRemoteBooked) {
+        return { time, status: 'booked' }
       }
 
       return { time, status: 'free' }
     })
 
+  // Демо-бронирование: пишет только в локальный state, в таблицу bookings ничего не отправляется.
   const bookSlot = (dateKey: string, courtId: number, time: string) => {
     setUserBookings((prev) => [
       ...prev,
@@ -55,7 +121,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       id: b.id,
       dateKey: b.dateKey,
       time: b.time,
-      courtName: COURTS.find((c) => c.id === b.courtId)?.name ?? `Корт ${b.courtId}`,
+      courtName: courts.find((c) => c.id === b.courtId)?.name ?? `Корт ${b.courtId}`,
       opponent: 'Игра с друзьями',
       isUpcoming: b.dateKey >= todayKey,
     }))
@@ -63,7 +129,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return [...fromBookings, ...seedGames].sort(
       (a, b) => `${a.dateKey}T${a.time}`.localeCompare(`${b.dateKey}T${b.time}`),
     )
-  }, [userBookings, seedGames, today])
+  }, [userBookings, seedGames, today, courts])
 
   const value: AppContextValue = {
     activeTab,
@@ -75,6 +141,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     bookSlot,
     games,
     userName,
+    courts,
+    courtsLoading,
+    courtsError,
+    bookingsLoading,
+    bookingsError,
+    reloadCourts: () => setCourtsReloadToken((n) => n + 1),
+    reloadBookings: () => setBookingsReloadToken((n) => n + 1),
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { Game, Slot, TabId } from '../types'
+import type { CourtInfo, Game, Slot, TabId } from '../types'
 
 export interface AppContextValue {
   activeTab: TabId
@@ -11,6 +11,13 @@ export interface AppContextValue {
   bookSlot: (dateKey: string, courtId: number, time: string) => void
   games: Game[]
   userName: string
+  courts: CourtInfo[]
+  courtsLoading: boolean
+  courtsError: string | null
+  bookingsLoading: boolean
+  bookingsError: string | null
+  reloadCourts: () => void
+  reloadBookings: () => void
 }
 
 export const AppContext = createContext<AppContextValue | null>(null)

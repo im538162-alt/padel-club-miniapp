@@ -83,6 +83,43 @@
   cursor: pointer;
 }
 
+/* Loading / error states */
+.state-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+}
+.state-notice--error {
+  border-color: rgba(248, 113, 113, 0.4);
+  background: var(--danger-bg);
+}
+.state-notice__icon {
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.state-notice__text {
+  flex: 1;
+  min-width: 0;
+}
+.state-notice__title {
+  font-size: 14px;
+  font-weight: 700;
+}
+.state-notice--error .state-notice__title {
+  color: var(--danger);
+}
+.state-notice__description {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+  overflow-wrap: break-word;
+}
+
 /* Court card */
 .court-list {
   display: flex;

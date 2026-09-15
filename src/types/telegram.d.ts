@@ -10,6 +10,7 @@ declare global {
   }
 
   interface TelegramWebApp {
+    initData: string
     initDataUnsafe: {
       user?: TelegramWebAppUser
     }

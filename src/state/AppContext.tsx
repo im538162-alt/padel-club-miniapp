@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { TIME_SLOTS } from '../data/constants'
 import { buildSeedGames } from '../data/games'
-import { fetchBookingsForDate, fetchCourts, type RemoteBooking } from '../lib/api'
+import { createBooking, fetchBookingsForDate, fetchCourts, type RemoteBooking } from '../lib/api'
 import { toDateKey } from '../utils/date'
 import { getTelegramWebApp, resolveDisplayName } from '../utils/telegram'
 import type { CourtInfo, Game, Slot, TabId, UserBooking } from '../types'
@@ -101,8 +101,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return { time, status: 'free' }
     })
 
-  // Демо-бронирование: пишет только в локальный state, в таблицу bookings ничего не отправляется.
-  const bookSlot = (dateKey: string, courtId: number, time: string) => {
+  // Бронь создаётся на сервере через Edge Function create-booking (никаких прямых
+  // insert в bookings из браузера). При успехе добавляем игру локально для
+  // «Моих игр» и перезапрашиваем занятость кортов из Supabase.
+  const bookSlot = async (dateKey: string, courtId: number, time: string) => {
+    await createBooking({ courtId, bookingDate: dateKey, startTime: time })
+
     setUserBookings((prev) => [
       ...prev,
       {
@@ -113,6 +117,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         createdAt: Date.now(),
       },
     ])
+
+    setBookingsReloadToken((n) => n + 1)
   }
 
   const games = useMemo<Game[]>(() => {

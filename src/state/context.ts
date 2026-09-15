@@ -8,7 +8,7 @@ export interface AppContextValue {
   selectedDateKey: string
   setSelectedDateKey: (key: string) => void
   getSlotsForCourt: (dateKey: string, courtId: number) => Slot[]
-  bookSlot: (dateKey: string, courtId: number, time: string) => void
+  bookSlot: (dateKey: string, courtId: number, time: string) => Promise<void>
   games: Game[]
   userName: string
   courts: CourtInfo[]

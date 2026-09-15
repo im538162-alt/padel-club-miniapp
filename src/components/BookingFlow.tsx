@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { formatDateWithWeekday } from '../utils/date'
+import { StateNotice } from './StateNotice'
 import type { Slot } from '../types'
 
 interface Props {
@@ -7,7 +8,7 @@ interface Props {
   dateKey: string
   slots: Slot[]
   onClose: () => void
-  onConfirm: (time: string) => void
+  onConfirm: (time: string) => Promise<void>
 }
 
 type Step = 'time' | 'confirm' | 'success'
@@ -15,11 +16,21 @@ type Step = 'time' | 'confirm' | 'success'
 export function BookingFlow({ courtName, dateKey, slots, onClose, onConfirm }: Props) {
   const [step, setStep] = useState<Step>('time')
   const [selectedTime, setSelectedTime] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
-  const handleConfirm = () => {
-    if (!selectedTime) return
-    onConfirm(selectedTime)
-    setStep('success')
+  const handleConfirm = async () => {
+    if (!selectedTime || isSubmitting) return
+    setSubmitError(null)
+    setIsSubmitting(true)
+    try {
+      await onConfirm(selectedTime)
+      setStep('success')
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Не удалось создать бронирование')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -80,12 +91,25 @@ export function BookingFlow({ courtName, dateKey, slots, onClose, onConfirm }: P
                 <strong>{selectedTime}</strong>
               </div>
             </div>
+            {submitError && (
+              <StateNotice kind="error" title="Не удалось забронировать" description={submitError} />
+            )}
             <div className="modal-sheet__actions">
-              <button type="button" className="btn btn--ghost" onClick={() => setStep('time')}>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => setStep('time')}
+                disabled={isSubmitting}
+              >
                 Назад
               </button>
-              <button type="button" className="btn btn--primary" onClick={handleConfirm}>
-                Подтвердить
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={handleConfirm}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? 'Бронируем…' : 'Подтвердить'}
               </button>
             </div>
           </>

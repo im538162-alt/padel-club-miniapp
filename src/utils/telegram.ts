@@ -8,6 +8,10 @@ export function getTelegramUser(): TelegramWebAppUser | undefined {
   return getTelegramWebApp()?.initDataUnsafe?.user
 }
 
+export function getTelegramInitData(): string {
+  return getTelegramWebApp()?.initData ?? ''
+}
+
 export function resolveDisplayName(): string {
   const user = getTelegramUser()
   if (!user) return FALLBACK_NAME

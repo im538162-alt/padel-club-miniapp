@@ -100,6 +100,9 @@ export async function createBooking(input: CreateBookingInput): Promise<void> {
   }
 
   const { error } = await supabase.functions.invoke('create-booking', {
+    headers: {
+      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+    },
     body: {
       initData,
       courtId: input.courtId,

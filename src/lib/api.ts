@@ -116,7 +116,7 @@ export async function createBooking(input: CreateBookingInput): Promise<void> {
     throw new Error(NOT_IN_TELEGRAM_MESSAGE)
   }
 
-  const { error } = await supabase.functions.invoke('create-booking-v3', {
+  const { error } = await supabase.functions.invoke('create-booking-v4', {
     headers: {
       Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
     },

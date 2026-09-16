@@ -20,6 +20,13 @@ export interface CreateBookingInput {
   startTime: string
 }
 
+export interface MyBookingRow {
+  id: string
+  courtName: string
+  dateKey: string
+  time: string
+}
+
 // Схема таблиц Supabase:
 //   courts(id bigint, name text)
 //   bookings(id uuid, court_id bigint references courts.id, booking_date date,
@@ -30,7 +37,12 @@ export interface CreateBookingInput {
 // сопоставление идёт по court_id и start_time.
 //
 // Создание брони идёт не прямым insert в bookings, а через Edge Function
-// create-booking (она сама проверяет initData и пишет запись на сервере).
+// create-booking-v2 (она сама проверяет initData и пишет запись на сервере).
+//
+// Список «Моих игр» приходит через Edge Function my-bookings. Предполагаемый
+// формат ответа: массив объектов (либо { bookings: [...] }) с полями вида
+// court_name (из courts.name), booking_date, start_time — код ниже терпимо
+// относится к camelCase-варианту этих же полей.
 
 export async function fetchCourts(): Promise<CourtInfo[]> {
   if (!isSupabaseConfigured || !supabase) {
@@ -86,7 +98,7 @@ async function resolveFunctionErrorMessage(error: unknown): Promise<string> {
     return error.message
   }
 
-  return 'Не удалось создать бронирование. Попробуйте ещё раз.'
+  return 'Не удалось выполнить запрос. Попробуйте ещё раз.'
 }
 
 export async function createBooking(input: CreateBookingInput): Promise<void> {
@@ -114,4 +126,55 @@ export async function createBooking(input: CreateBookingInput): Promise<void> {
   if (error) {
     throw new Error(await resolveFunctionErrorMessage(error))
   }
+}
+
+interface RawMyBooking {
+  id?: string | number
+  court_name?: string
+  courtName?: string
+  court?: { name?: string }
+  booking_date?: string
+  bookingDate?: string
+  start_time?: string
+  startTime?: string
+}
+
+function toMyBookingRow(raw: RawMyBooking, index: number): MyBookingRow {
+  const courtName = raw.court_name ?? raw.courtName ?? raw.court?.name ?? 'Корт'
+  const dateKey = raw.booking_date ?? raw.bookingDate ?? ''
+  // start_time приходит из Postgres как "HH:MM:SS" — приводим к "HH:MM".
+  const time = String(raw.start_time ?? raw.startTime ?? '').slice(0, 5)
+  const id = raw.id != null ? String(raw.id) : `${dateKey}-${time}-${courtName}-${index}`
+
+  return { id, courtName, dateKey, time }
+}
+
+export async function fetchMyBookings(): Promise<MyBookingRow[]> {
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error(NOT_CONFIGURED_MESSAGE)
+  }
+
+  const initData = getTelegramInitData()
+  if (!initData) {
+    throw new Error(NOT_IN_TELEGRAM_MESSAGE)
+  }
+
+  const { data, error } = await supabase.functions.invoke('my-bookings', {
+    headers: {
+      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+    },
+    body: { initData },
+  })
+
+  if (error) {
+    throw new Error(await resolveFunctionErrorMessage(error))
+  }
+
+  const rawRows: RawMyBooking[] = Array.isArray(data)
+    ? data
+    : Array.isArray((data as { bookings?: unknown } | null)?.bookings)
+      ? (data as { bookings: RawMyBooking[] }).bookings
+      : []
+
+  return rawRows.map(toMyBookingRow)
 }

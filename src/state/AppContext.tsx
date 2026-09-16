@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { TIME_SLOTS } from '../data/constants'
-import { buildSeedGames } from '../data/games'
-import { createBooking, fetchBookingsForDate, fetchCourts, type RemoteBooking } from '../lib/api'
+import {
+  createBooking,
+  fetchBookingsForDate,
+  fetchCourts,
+  fetchMyBookings,
+  type MyBookingRow,
+  type RemoteBooking,
+} from '../lib/api'
 import { toDateKey } from '../utils/date'
 import { getTelegramWebApp, resolveDisplayName } from '../utils/telegram'
 import type { CourtInfo, Game, Slot, TabId, UserBooking } from '../types'
@@ -13,7 +19,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [selectedDateKey, setSelectedDateKey] = useState(() => toDateKey(today))
   const [userBookings, setUserBookings] = useState<UserBooking[]>([])
   const [userName] = useState(() => resolveDisplayName())
-  const seedGames = useMemo(() => buildSeedGames(today), [today])
 
   useEffect(() => {
     getTelegramWebApp()?.ready()
@@ -82,6 +87,50 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- requestKey производный от тех же зависимостей
   }, [selectedDateKey, bookingsReloadToken])
 
+  // «Мои игры» из Edge Function my-bookings — единственный источник данных
+  // для этого экрана, локальных/демо записей больше нет.
+  const [myBookingsRaw, setMyBookingsRaw] = useState<MyBookingRow[]>([])
+  const [myGamesError, setMyGamesError] = useState<string | null>(null)
+  const [myGamesReloadToken, setMyGamesReloadToken] = useState(0)
+  const [myGamesLoadedToken, setMyGamesLoadedToken] = useState(-1)
+  const myGamesLoading = myGamesLoadedToken !== myGamesReloadToken
+
+  useEffect(() => {
+    let cancelled = false
+
+    fetchMyBookings()
+      .then((data) => {
+        if (cancelled) return
+        setMyBookingsRaw(data)
+        setMyGamesError(null)
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return
+        setMyGamesError(error instanceof Error ? error.message : 'Не удалось загрузить ваши игры')
+      })
+      .finally(() => {
+        if (!cancelled) setMyGamesLoadedToken(myGamesReloadToken)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [myGamesReloadToken])
+
+  const myGames = useMemo<Game[]>(() => {
+    const nowMs = today.getTime()
+
+    return myBookingsRaw
+      .map((row) => ({
+        id: row.id,
+        dateKey: row.dateKey,
+        time: row.time,
+        courtName: row.courtName,
+        isUpcoming: new Date(`${row.dateKey}T${row.time}:00`).getTime() >= nowMs,
+      }))
+      .sort((a, b) => `${a.dateKey}T${a.time}`.localeCompare(`${b.dateKey}T${b.time}`))
+  }, [myBookingsRaw, today])
+
   const getSlotsForCourt = (dateKey: string, courtId: number): Slot[] =>
     TIME_SLOTS.map((time) => {
       const localBooking = userBookings.find(
@@ -101,9 +150,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return { time, status: 'free' }
     })
 
-  // Бронь создаётся на сервере через Edge Function create-booking (никаких прямых
-  // insert в bookings из браузера). При успехе добавляем игру локально для
-  // «Моих игр» и перезапрашиваем занятость кортов из Supabase.
+  // Бронь создаётся на сервере через Edge Function create-booking-v2 (никаких прямых
+  // insert в bookings из браузера). userBookings — только для мгновенного
+  // оптимистичного статуса корта на «Главной», пока не подтянулась занятость из
+  // Supabase. При успехе также перезапрашиваем занятость кортов и «Мои игры».
   const bookSlot = async (dateKey: string, courtId: number, time: string) => {
     await createBooking({ courtId, bookingDate: dateKey, startTime: time })
 
@@ -119,23 +169,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ])
 
     setBookingsReloadToken((n) => n + 1)
+    setMyGamesReloadToken((n) => n + 1)
   }
-
-  const games = useMemo<Game[]>(() => {
-    const todayKey = toDateKey(today)
-    const fromBookings: Game[] = userBookings.map((b) => ({
-      id: b.id,
-      dateKey: b.dateKey,
-      time: b.time,
-      courtName: courts.find((c) => c.id === b.courtId)?.name ?? `Корт ${b.courtId}`,
-      opponent: 'Игра с друзьями',
-      isUpcoming: b.dateKey >= todayKey,
-    }))
-
-    return [...fromBookings, ...seedGames].sort(
-      (a, b) => `${a.dateKey}T${a.time}`.localeCompare(`${b.dateKey}T${b.time}`),
-    )
-  }, [userBookings, seedGames, today, courts])
 
   const value: AppContextValue = {
     activeTab,
@@ -145,7 +180,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSelectedDateKey,
     getSlotsForCourt,
     bookSlot,
-    games,
     userName,
     courts,
     courtsLoading,
@@ -154,6 +188,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     bookingsError,
     reloadCourts: () => setCourtsReloadToken((n) => n + 1),
     reloadBookings: () => setBookingsReloadToken((n) => n + 1),
+    myGames,
+    myGamesLoading,
+    myGamesError,
+    reloadMyGames: () => setMyGamesReloadToken((n) => n + 1),
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

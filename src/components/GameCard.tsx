@@ -14,17 +14,12 @@ export function GameCard({ game }: Props) {
       </div>
       <div className="game-card__body">
         <div className="game-card__court">{game.courtName}</div>
-        <div className="game-card__opponent">{game.opponent}</div>
       </div>
       <div className="game-card__status">
         {game.isUpcoming ? (
-          <span className="status-pill status-pill--upcoming">Предстоит</span>
-        ) : game.result === 'win' ? (
-          <span className="status-pill status-pill--win">Победа</span>
-        ) : game.result === 'loss' ? (
-          <span className="status-pill status-pill--loss">Поражение</span>
+          <span className="status-pill status-pill--upcoming">Забронировано</span>
         ) : (
-          <span className="status-pill">Завершена</span>
+          <span className="status-pill">Прошла</span>
         )}
       </div>
     </div>

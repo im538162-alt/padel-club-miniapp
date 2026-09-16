@@ -9,7 +9,6 @@ export interface AppContextValue {
   setSelectedDateKey: (key: string) => void
   getSlotsForCourt: (dateKey: string, courtId: number) => Slot[]
   bookSlot: (dateKey: string, courtId: number, time: string) => Promise<void>
-  games: Game[]
   userName: string
   courts: CourtInfo[]
   courtsLoading: boolean
@@ -18,6 +17,10 @@ export interface AppContextValue {
   bookingsError: string | null
   reloadCourts: () => void
   reloadBookings: () => void
+  myGames: Game[]
+  myGamesLoading: boolean
+  myGamesError: string | null
+  reloadMyGames: () => void
 }
 
 export const AppContext = createContext<AppContextValue | null>(null)

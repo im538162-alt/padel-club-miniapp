@@ -21,16 +21,14 @@ export interface UserBooking {
   createdAt: number
 }
 
-export type GameResult = 'win' | 'loss' | null
-
+// Запись «Моих игр» — приходит только из Edge Function my-bookings,
+// без выдуманных соперников или результатов.
 export interface Game {
   id: string
   dateKey: string
   time: string
   courtName: string
-  opponent: string
   isUpcoming: boolean
-  result?: GameResult
 }
 
 export interface Player {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { TIME_SLOTS } from '../data/constants'
 import {
+  cancelBooking,
   createBooking,
   fetchBookingsForDate,
   fetchCourts,
@@ -131,6 +132,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .sort((a, b) => `${a.dateKey}T${a.time}`.localeCompare(`${b.dateKey}T${b.time}`))
   }, [myBookingsRaw, today])
 
+  const reloadCourts = () => setCourtsReloadToken((n) => n + 1)
+  const reloadBookings = () => setBookingsReloadToken((n) => n + 1)
+  const reloadMyGames = () => setMyGamesReloadToken((n) => n + 1)
+
   const getSlotsForCourt = (dateKey: string, courtId: number): Slot[] =>
     TIME_SLOTS.map((time) => {
       const localBooking = userBookings.find(
@@ -168,8 +173,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       },
     ])
 
-    setBookingsReloadToken((n) => n + 1)
-    setMyGamesReloadToken((n) => n + 1)
+    reloadBookings()
+    reloadMyGames()
+  }
+
+  // Отмена брони — тоже через Edge Function (cancel-booking), без прямых
+  // изменений в таблице bookings. При успехе обновляем и «Мои игры», и
+  // занятость кортов на «Главной», чтобы освободившийся слот сразу был виден.
+  const cancelMyGame = async (bookingId: string) => {
+    await cancelBooking({ bookingId })
+
+    reloadMyGames()
+    reloadBookings()
   }
 
   const value: AppContextValue = {
@@ -186,12 +201,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     courtsError,
     bookingsLoading,
     bookingsError,
-    reloadCourts: () => setCourtsReloadToken((n) => n + 1),
-    reloadBookings: () => setBookingsReloadToken((n) => n + 1),
+    reloadCourts,
+    reloadBookings,
     myGames,
     myGamesLoading,
     myGamesError,
-    reloadMyGames: () => setMyGamesReloadToken((n) => n + 1),
+    reloadMyGames,
+    cancelMyGame,
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

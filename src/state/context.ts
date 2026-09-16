@@ -21,6 +21,7 @@ export interface AppContextValue {
   myGamesLoading: boolean
   myGamesError: string | null
   reloadMyGames: () => void
+  cancelMyGame: (bookingId: string) => Promise<void>
 }
 
 export const AppContext = createContext<AppContextValue | null>(null)

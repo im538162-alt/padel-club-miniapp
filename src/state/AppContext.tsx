@@ -5,6 +5,7 @@ import {
   createBooking,
   fetchBookingsForDate,
   fetchCourts,
+  fetchLeaderboard,
   fetchMyBookings,
   fetchPlayerProfile,
   updatePlayerProfile,
@@ -13,7 +14,16 @@ import {
 } from '../lib/api'
 import { timeToMinutes, toDateKey } from '../utils/date'
 import { getTelegramWebApp, resolveDisplayName } from '../utils/telegram'
-import type { CourtInfo, Game, PlayerProfile, SkillLevel, Slot, TabId, UserBooking } from '../types'
+import type {
+  CourtInfo,
+  Game,
+  LeaderboardEntry,
+  PlayerProfile,
+  SkillLevel,
+  Slot,
+  TabId,
+  UserBooking,
+} from '../types'
 import { AppContext, type AppContextValue } from './context'
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -164,10 +174,41 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [profileReloadToken])
 
+  // Рейтинг игроков из Edge Function player-leaderboard — тот же приём с
+  // "загруженным" токеном вместо setState в начале эффекта.
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
+  const [leaderboardError, setLeaderboardError] = useState<string | null>(null)
+  const [leaderboardReloadToken, setLeaderboardReloadToken] = useState(0)
+  const [leaderboardLoadedToken, setLeaderboardLoadedToken] = useState(-1)
+  const leaderboardLoading = leaderboardLoadedToken !== leaderboardReloadToken
+
+  useEffect(() => {
+    let cancelled = false
+
+    fetchLeaderboard()
+      .then((data) => {
+        if (cancelled) return
+        setLeaderboard(data)
+        setLeaderboardError(null)
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return
+        setLeaderboardError(error instanceof Error ? error.message : 'Не удалось загрузить рейтинг')
+      })
+      .finally(() => {
+        if (!cancelled) setLeaderboardLoadedToken(leaderboardReloadToken)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [leaderboardReloadToken])
+
   const reloadCourts = () => setCourtsReloadToken((n) => n + 1)
   const reloadBookings = () => setBookingsReloadToken((n) => n + 1)
   const reloadMyGames = () => setMyGamesReloadToken((n) => n + 1)
   const reloadProfile = () => setProfileReloadToken((n) => n + 1)
+  const reloadLeaderboard = () => setLeaderboardReloadToken((n) => n + 1)
 
   const todayKey = toDateKey(today)
   const nowMinutes = today.getHours() * 60 + today.getMinutes()
@@ -282,6 +323,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     profileError,
     reloadProfile,
     updateProfile,
+    leaderboard,
+    leaderboardLoading,
+    leaderboardError,
+    reloadLeaderboard,
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

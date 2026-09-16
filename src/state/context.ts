@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { CourtInfo, Game, PlayerProfile, SkillLevel, Slot, TabId } from '../types'
+import type { CourtInfo, Game, LeaderboardEntry, PlayerProfile, SkillLevel, Slot, TabId } from '../types'
 
 export interface AppContextValue {
   activeTab: TabId
@@ -27,6 +27,10 @@ export interface AppContextValue {
   profileError: string | null
   reloadProfile: () => void
   updateProfile: (input: { displayName: string; city: string; skillLevel: SkillLevel }) => Promise<void>
+  leaderboard: LeaderboardEntry[]
+  leaderboardLoading: boolean
+  leaderboardError: string | null
+  reloadLeaderboard: () => void
 }
 
 export const AppContext = createContext<AppContextValue | null>(null)

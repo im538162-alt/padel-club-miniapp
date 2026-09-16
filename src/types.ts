@@ -31,13 +31,6 @@ export interface Game {
   isUpcoming: boolean
 }
 
-export interface Player {
-  id: string
-  name: string
-  rating: number
-  isCurrentUser?: boolean
-}
-
 export type SkillLevel = 'beginner' | 'intermediate' | 'advanced'
 
 // Профиль игрока — приходит из Edge Function player-profile.
@@ -46,4 +39,14 @@ export interface PlayerProfile {
   city: string | null
   skillLevel: SkillLevel
   rating: number
+}
+
+// Строка рейтинга — приходит только из Edge Function player-leaderboard,
+// без демо-игроков.
+export interface LeaderboardEntry {
+  rank: number
+  displayName: string
+  skillLevel: SkillLevel
+  rating: number
+  isCurrentUser: boolean
 }

@@ -1,7 +1,7 @@
 import { FunctionsHttpError } from '@supabase/supabase-js'
 import { isSupabaseConfigured, supabase } from './supabase'
 import { getTelegramInitData } from '../utils/telegram'
-import type { CourtInfo, PlayerProfile, SkillLevel } from '../types'
+import type { CourtInfo, LeaderboardEntry, PlayerProfile, SkillLevel } from '../types'
 
 const NOT_CONFIGURED_MESSAGE =
   'Supabase не настроен: заполните VITE_SUPABASE_URL и VITE_SUPABASE_PUBLISHABLE_KEY в .env.local'
@@ -60,6 +60,11 @@ export interface MyBookingRow {
 // Профиль игрока — через Edge Function player-profile: action 'get' отдаёт
 // текущий профиль (объект напрямую либо { profile: {...} }), action 'update'
 // сохраняет displayName/city/skillLevel и не трогает рейтинг (он read-only).
+//
+// Рейтинг игроков — через Edge Function player-leaderboard: массив объектов
+// напрямую, либо { players: [...] } (реальный формат ответа), либо { leaderboard: [...] }
+// с полями rank, displayName, skillLevel, rating, isCurrentUser — код ниже
+// терпимо относится и к snake_case-варианту полей.
 
 export async function fetchCourts(): Promise<CourtInfo[]> {
   if (!isSupabaseConfigured || !supabase) {
@@ -229,6 +234,61 @@ export async function fetchMyBookings(): Promise<MyBookingRow[]> {
       : []
 
   return rawRows.map(toMyBookingRow)
+}
+
+interface RawLeaderboardEntry {
+  rank?: number | string
+  display_name?: string
+  displayName?: string
+  name?: string
+  skill_level?: string | number
+  skillLevel?: string | number
+  rating?: number | string
+  is_current_user?: boolean
+  isCurrentUser?: boolean
+}
+
+function toLeaderboardEntry(raw: RawLeaderboardEntry, index: number): LeaderboardEntry {
+  return {
+    rank: Number(raw.rank ?? index + 1) || index + 1,
+    displayName: raw.display_name ?? raw.displayName ?? raw.name ?? '',
+    skillLevel: normalizeSkillLevel(raw.skill_level ?? raw.skillLevel),
+    rating: Number(raw.rating ?? 0) || 0,
+    isCurrentUser: Boolean(raw.is_current_user ?? raw.isCurrentUser ?? false),
+  }
+}
+
+export async function fetchLeaderboard(): Promise<LeaderboardEntry[]> {
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error(NOT_CONFIGURED_MESSAGE)
+  }
+
+  const initData = getTelegramInitData()
+  if (!initData) {
+    throw new Error(NOT_IN_TELEGRAM_MESSAGE)
+  }
+
+  const { data, error } = await supabase.functions.invoke('player-leaderboard', {
+    headers: {
+      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+    },
+    body: { initData },
+  })
+
+  if (error) {
+    throw new Error(await resolveFunctionErrorMessage(error))
+  }
+
+  const wrapped = data as { players?: unknown; leaderboard?: unknown } | null
+  const rawRows: RawLeaderboardEntry[] = Array.isArray(data)
+    ? data
+    : Array.isArray(wrapped?.players)
+      ? (wrapped as { players: RawLeaderboardEntry[] }).players
+      : Array.isArray(wrapped?.leaderboard)
+        ? (wrapped as { leaderboard: RawLeaderboardEntry[] }).leaderboard
+        : []
+
+  return rawRows.map(toLeaderboardEntry).sort((a, b) => a.rank - b.rank)
 }
 
 interface RawPlayerProfile {

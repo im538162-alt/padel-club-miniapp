@@ -159,7 +159,7 @@ export async function fetchMyBookings(): Promise<MyBookingRow[]> {
     throw new Error(NOT_IN_TELEGRAM_MESSAGE)
   }
 
-  const { data, error } = await supabase.functions.invoke('my-bookings', {
+  const { data, error } = await supabase.functions.invoke('my-bookings-v2', {
     headers: {
       Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
     },

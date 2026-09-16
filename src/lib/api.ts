@@ -39,10 +39,10 @@ export interface MyBookingRow {
 // Создание брони идёт не прямым insert в bookings, а через Edge Function
 // create-booking-v2 (она сама проверяет initData и пишет запись на сервере).
 //
-// Список «Моих игр» приходит через Edge Function my-bookings. Предполагаемый
-// формат ответа: массив объектов (либо { bookings: [...] }) с полями вида
-// court_name (из courts.name), booking_date, start_time — код ниже терпимо
-// относится к camelCase-варианту этих же полей.
+// Список «Моих игр» приходит через Edge Function my-bookings. Формат ответа:
+// массив объектов (либо { bookings: [...] }) с полями booking_date, start_time
+// и courts.name (courts может быть как объектом, так и массивом) — код ниже
+// терпимо относится и к camelCase-варианту этих же полей.
 
 export async function fetchCourts(): Promise<CourtInfo[]> {
   if (!isSupabaseConfigured || !supabase) {
@@ -133,14 +133,23 @@ interface RawMyBooking {
   court_name?: string
   courtName?: string
   court?: { name?: string }
+  // courts может прийти как объект (связь один-к-одному) или как массив
+  // (связь один-ко-многим/join) — оба варианта встречаются у PostgREST.
+  courts?: { name?: string } | { name?: string }[]
   booking_date?: string
   bookingDate?: string
   start_time?: string
   startTime?: string
 }
 
+function extractCourtsName(courts: RawMyBooking['courts']): string | undefined {
+  if (Array.isArray(courts)) return courts[0]?.name
+  return courts?.name
+}
+
 function toMyBookingRow(raw: RawMyBooking, index: number): MyBookingRow {
-  const courtName = raw.court_name ?? raw.courtName ?? raw.court?.name ?? 'Корт'
+  const courtName =
+    extractCourtsName(raw.courts) ?? raw.court_name ?? raw.courtName ?? raw.court?.name ?? 'Корт'
   const dateKey = raw.booking_date ?? raw.bookingDate ?? ''
   // start_time приходит из Postgres как "HH:MM:SS" — приводим к "HH:MM".
   const time = String(raw.start_time ?? raw.startTime ?? '').slice(0, 5)

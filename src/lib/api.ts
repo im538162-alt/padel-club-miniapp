@@ -60,11 +60,16 @@ export interface MyBookingRow {
 // Профиль игрока — через Edge Function player-profile: action 'get' отдаёт
 // текущий профиль (объект напрямую либо { profile: {...} }), action 'update'
 // сохраняет displayName/city/skillLevel и не трогает рейтинг (он read-only).
+// avatarPath из профиля превращается в публичный URL хранилища avatars.
 //
 // Рейтинг игроков — через Edge Function player-leaderboard: массив объектов
 // напрямую, либо { players: [...] } (реальный формат ответа), либо { leaderboard: [...] }
 // с полями rank, displayName, skillLevel, rating, isCurrentUser — код ниже
 // терпимо относится и к snake_case-варианту полей.
+//
+// Фото профиля — через Edge Function upload-avatar: body { initData, imageDataUrl },
+// ответ содержит либо готовый URL, либо путь в бакете avatars (из которого URL
+// строится тем же способом, что и для профиля).
 
 export async function fetchCourts(): Promise<CourtInfo[]> {
   if (!isSupabaseConfigured || !supabase) {
@@ -291,6 +296,17 @@ export async function fetchLeaderboard(): Promise<LeaderboardEntry[]> {
   return rawRows.map(toLeaderboardEntry).sort((a, b) => a.rank - b.rank)
 }
 
+// Публичный URL строится из avatar_path так же, как задокументировано в задаче:
+// {VITE_SUPABASE_URL}/storage/v1/object/public/avatars/{avatarPath}.
+function buildAvatarUrl(avatarPath: string | null | undefined): string | null {
+  if (!avatarPath) return null
+
+  const baseUrl = import.meta.env.VITE_SUPABASE_URL
+  if (!baseUrl) return null
+
+  return `${baseUrl}/storage/v1/object/public/avatars/${avatarPath}`
+}
+
 interface RawPlayerProfile {
   display_name?: string
   displayName?: string
@@ -299,6 +315,8 @@ interface RawPlayerProfile {
   skill_level?: string | number
   skillLevel?: string | number
   rating?: number | string
+  avatar_path?: string | null
+  avatarPath?: string | null
 }
 
 // skillLevel может прийти как английское слово, число (1-3) или уже готовая
@@ -314,11 +332,15 @@ function normalizeSkillLevel(raw: string | number | undefined): SkillLevel {
 }
 
 function toPlayerProfile(raw: RawPlayerProfile): PlayerProfile {
+  const avatarPath = raw.avatar_path ?? raw.avatarPath ?? null
+
   return {
     displayName: raw.display_name ?? raw.displayName ?? raw.name ?? '',
     city: raw.city ? String(raw.city) : null,
     skillLevel: normalizeSkillLevel(raw.skill_level ?? raw.skillLevel),
     rating: Number(raw.rating ?? 0) || 0,
+    avatarPath,
+    avatarUrl: buildAvatarUrl(avatarPath),
   }
 }
 
@@ -375,4 +397,64 @@ export async function updatePlayerProfile(input: UpdatePlayerProfileInput): Prom
   if (error) {
     throw new Error(await resolveFunctionErrorMessage(error))
   }
+}
+
+const ALLOWED_AVATAR_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+const MAX_AVATAR_SIZE_BYTES = 2 * 1024 * 1024
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result)
+      } else {
+        reject(new Error('Не удалось прочитать файл изображения'))
+      }
+    }
+    reader.onerror = () => reject(new Error('Не удалось прочитать файл изображения'))
+    reader.readAsDataURL(file)
+  })
+}
+
+export async function uploadProfileAvatar(file: File): Promise<string | null> {
+  if (!ALLOWED_AVATAR_TYPES.includes(file.type)) {
+    throw new Error('Поддерживаются только изображения JPEG, PNG или WebP')
+  }
+
+  if (file.size > MAX_AVATAR_SIZE_BYTES) {
+    throw new Error('Размер фото не должен превышать 2 МБ')
+  }
+
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error(NOT_CONFIGURED_MESSAGE)
+  }
+
+  const initData = getTelegramInitData()
+  if (!initData) {
+    throw new Error(NOT_IN_TELEGRAM_MESSAGE)
+  }
+
+  const imageDataUrl = await readFileAsDataUrl(file)
+
+  const { data, error } = await supabase.functions.invoke('upload-avatar', {
+    headers: {
+      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+    },
+    body: { initData, imageDataUrl },
+  })
+
+  if (error) {
+    throw new Error(await resolveFunctionErrorMessage(error))
+  }
+
+  const raw = data as
+    | { url?: string; avatarUrl?: string; avatar_url?: string; path?: string; avatarPath?: string; avatar_path?: string }
+    | null
+
+  const url = raw?.url ?? raw?.avatarUrl ?? raw?.avatar_url
+  if (url) return url
+
+  const path = raw?.path ?? raw?.avatarPath ?? raw?.avatar_path
+  return buildAvatarUrl(path)
 }

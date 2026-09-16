@@ -39,6 +39,8 @@ export interface PlayerProfile {
   city: string | null
   skillLevel: SkillLevel
   rating: number
+  avatarPath: string | null
+  avatarUrl: string | null
 }
 
 // Строка рейтинга — приходит только из Edge Function player-leaderboard,

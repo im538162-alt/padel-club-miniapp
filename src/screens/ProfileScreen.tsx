@@ -1,12 +1,36 @@
-import { useState } from 'react'
+import { useRef, useState, type ChangeEvent } from 'react'
 import { EditProfileModal } from '../components/EditProfileModal'
 import { StateNotice } from '../components/StateNotice'
 import { SKILL_LEVEL_LABELS } from '../data/skillLevels'
 import { useAppContext } from '../state/context'
 
 export function ProfileScreen() {
-  const { profile, profileLoading, profileError, reloadProfile, updateProfile } = useAppContext()
+  const { profile, profileLoading, profileError, reloadProfile, updateProfile, uploadAvatar } =
+    useAppContext()
   const [isEditing, setIsEditing] = useState(false)
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
+  const [avatarError, setAvatarError] = useState<string | null>(null)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
+
+  const handleAvatarButtonClick = () => {
+    avatarInputRef.current?.click()
+  }
+
+  const handleAvatarFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+
+    setAvatarError(null)
+    setIsUploadingAvatar(true)
+    try {
+      await uploadAvatar(file)
+    } catch (error) {
+      setAvatarError(error instanceof Error ? error.message : 'Не удалось загрузить фото')
+    } finally {
+      setIsUploadingAvatar(false)
+    }
+  }
 
   return (
     <div className="screen">
@@ -26,9 +50,38 @@ export function ProfileScreen() {
       {!profileLoading && !profileError && profile && (
         <>
           <div className="profile-card">
-            <div className="profile-card__avatar">
-              {(profile.displayName.charAt(0) || '?').toUpperCase()}
-            </div>
+            {profile.avatarUrl ? (
+              <img
+                className="profile-card__avatar profile-card__avatar--photo"
+                src={profile.avatarUrl}
+                alt=""
+              />
+            ) : (
+              <div className="profile-card__avatar">
+                {(profile.displayName.charAt(0) || '?').toUpperCase()}
+              </div>
+            )}
+
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="visually-hidden"
+              onChange={handleAvatarFileChange}
+            />
+            <button
+              type="button"
+              className="btn btn--ghost btn--small"
+              onClick={handleAvatarButtonClick}
+              disabled={isUploadingAvatar}
+            >
+              {isUploadingAvatar ? 'Загружаем…' : profile.avatarUrl ? 'Изменить фото' : 'Добавить фото'}
+            </button>
+
+            {avatarError && (
+              <StateNotice kind="error" title="Не удалось загрузить фото" description={avatarError} />
+            )}
+
             <div className="profile-card__name">{profile.displayName}</div>
             <div className="profile-card__city">{profile.city || 'Город не указан'}</div>
             <div className="profile-card__meta">
@@ -44,11 +97,7 @@ export function ProfileScreen() {
       )}
 
       {isEditing && profile && (
-        <EditProfileModal
-          profile={profile}
-          onClose={() => setIsEditing(false)}
-          onSave={updateProfile}
-        />
+        <EditProfileModal profile={profile} onClose={() => setIsEditing(false)} onSave={updateProfile} />
       )}
     </div>
   )

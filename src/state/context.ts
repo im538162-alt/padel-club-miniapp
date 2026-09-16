@@ -27,6 +27,7 @@ export interface AppContextValue {
   profileError: string | null
   reloadProfile: () => void
   updateProfile: (input: { displayName: string; city: string; skillLevel: SkillLevel }) => Promise<void>
+  uploadAvatar: (file: File) => Promise<void>
   leaderboard: LeaderboardEntry[]
   leaderboardLoading: boolean
   leaderboardError: string | null

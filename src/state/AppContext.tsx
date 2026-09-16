@@ -9,6 +9,7 @@ import {
   fetchMyBookings,
   fetchPlayerProfile,
   updatePlayerProfile,
+  uploadProfileAvatar,
   type MyBookingRow,
   type RemoteBooking,
 } from '../lib/api'
@@ -297,6 +298,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     reloadProfile()
   }
 
+  // Фото загружается через Edge Function upload-avatar (data URL в body, без прямой
+  // записи в Storage с клиента). После успеха перезапрашиваем профиль, чтобы
+  // подтянулся новый avatar_path/avatarUrl.
+  const uploadAvatar = async (file: File) => {
+    await uploadProfileAvatar(file)
+    reloadProfile()
+  }
+
   const value: AppContextValue = {
     activeTab,
     setActiveTab,
@@ -323,6 +332,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     profileError,
     reloadProfile,
     updateProfile,
+    uploadAvatar,
     leaderboard,
     leaderboardLoading,
     leaderboardError,

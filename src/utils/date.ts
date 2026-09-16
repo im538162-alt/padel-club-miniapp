@@ -11,6 +11,13 @@ export function addDays(date: Date, days: number): Date {
   return copy
 }
 
+// Переводит "HH:MM" (или "HH:MM:SS") в минуты с начала суток — удобно для
+// сравнения времени и проверки пересечения интервалов.
+export function timeToMinutes(time: string): number {
+  const [hours, minutes] = time.split(':').map(Number)
+  return hours * 60 + minutes
+}
+
 const WEEKDAYS = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб']
 const MONTHS = [
   'января',

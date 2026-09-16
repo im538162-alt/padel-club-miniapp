@@ -11,7 +11,8 @@ const NOT_IN_TELEGRAM_MESSAGE =
 
 export interface RemoteBooking {
   courtId: number
-  time: string
+  startTime: string
+  endTime: string
 }
 
 export interface CreateBookingInput {
@@ -37,8 +38,9 @@ export interface MyBookingRow {
 //            start_time time, end_time time, player_name text,
 //            telegram_user_id bigint, status text)
 //
-// Для занятости корта учитываются только подтверждённые брони (status = 'confirmed'),
-// сопоставление идёт по court_id и start_time.
+// Для занятости корта учитываются только подтверждённые брони (status = 'confirmed').
+// Слот считается занятым, если его часовой интервал пересекается с [start_time, end_time)
+// хотя бы одной такой брони того же корта — сравнение идёт в AppContext.getSlotsForCourt.
 //
 // Создание брони идёт не прямым insert в bookings, а через Edge Function
 // create-booking-v2 (она сама проверяет initData и пишет запись на сервере).
@@ -70,7 +72,7 @@ export async function fetchBookingsForDate(dateKey: string): Promise<RemoteBooki
 
   const { data, error } = await supabase
     .from('bookings')
-    .select('court_id, start_time')
+    .select('court_id, start_time, end_time')
     .eq('booking_date', dateKey)
     .eq('status', 'confirmed')
 
@@ -78,11 +80,12 @@ export async function fetchBookingsForDate(dateKey: string): Promise<RemoteBooki
     throw new Error(error.message)
   }
 
-  // start_time приходит из Postgres как "HH:MM:SS" — приводим к формату "HH:MM",
-  // в котором заданы слоты TIME_SLOTS.
+  // start_time/end_time приходят из Postgres как "HH:MM:SS" — приводим к формату
+  // "HH:MM", в котором заданы слоты TIME_SLOTS.
   return (data ?? []).map((row) => ({
     courtId: row.court_id as number,
-    time: String(row.start_time).slice(0, 5),
+    startTime: String(row.start_time).slice(0, 5),
+    endTime: String(row.end_time).slice(0, 5),
   }))
 }
 

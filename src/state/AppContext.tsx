@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { TIME_SLOTS } from '../data/constants'
+import { SLOT_DURATION_MINUTES, TIME_SLOTS } from '../data/constants'
 import {
   cancelBooking,
   createBooking,
@@ -9,7 +9,7 @@ import {
   type MyBookingRow,
   type RemoteBooking,
 } from '../lib/api'
-import { toDateKey } from '../utils/date'
+import { timeToMinutes, toDateKey } from '../utils/date'
 import { getTelegramWebApp, resolveDisplayName } from '../utils/telegram'
 import type { CourtInfo, Game, Slot, TabId, UserBooking } from '../types'
 import { AppContext, type AppContextValue } from './context'
@@ -136,8 +136,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const reloadBookings = () => setBookingsReloadToken((n) => n + 1)
   const reloadMyGames = () => setMyGamesReloadToken((n) => n + 1)
 
-  const getSlotsForCourt = (dateKey: string, courtId: number): Slot[] =>
-    TIME_SLOTS.map((time) => {
+  const todayKey = toDateKey(today)
+  const nowMinutes = today.getHours() * 60 + today.getMinutes()
+
+  // Для сегодняшней даты уже прошедшее время не показываем вовсе — его нельзя
+  // забронировать, так что нет смысла предлагать его в списке.
+  const getSlotsForCourt = (dateKey: string, courtId: number): Slot[] => {
+    const relevantTimes =
+      dateKey === todayKey ? TIME_SLOTS.filter((time) => timeToMinutes(time) > nowMinutes) : TIME_SLOTS
+
+    return relevantTimes.map((time) => {
       const localBooking = userBookings.find(
         (b) => b.dateKey === dateKey && b.courtId === courtId && b.time === time,
       )
@@ -145,15 +153,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return { time, status: 'booked', opponent: 'Игра с друзьями' }
       }
 
-      const isRemoteBooked =
-        dateKey === selectedDateKey &&
-        remoteBookings.some((b) => b.courtId === courtId && b.time === time)
-      if (isRemoteBooked) {
-        return { time, status: 'booked' }
+      // Слот длится SLOT_DURATION_MINUTES (1 час) и считается занятым, если
+      // пересекается с интервалом [start_time, end_time) любой активной брони
+      // того же корта — не только при точном совпадении времени начала.
+      if (dateKey === selectedDateKey) {
+        const slotStart = timeToMinutes(time)
+        const slotEnd = slotStart + SLOT_DURATION_MINUTES
+        const isRemoteBooked = remoteBookings.some(
+          (b) =>
+            b.courtId === courtId &&
+            timeToMinutes(b.startTime) < slotEnd &&
+            timeToMinutes(b.endTime) > slotStart,
+        )
+        if (isRemoteBooked) {
+          return { time, status: 'booked' }
+        }
       }
 
       return { time, status: 'free' }
     })
+  }
 
   // Бронь создаётся на сервере через Edge Function create-booking-v2 (никаких прямых
   // insert в bookings из браузера). userBookings — только для мгновенного

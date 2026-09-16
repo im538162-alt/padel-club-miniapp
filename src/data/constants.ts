@@ -1,3 +1,7 @@
+// Длительность одной игры — используется для проверки пересечения слота
+// с существующими бронями (см. getSlotsForCourt в AppContext).
+export const SLOT_DURATION_MINUTES = 60
+
 export const TIME_SLOTS = [
   '08:00',
   '09:30',

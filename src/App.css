@@ -476,32 +476,68 @@
   font-weight: 700;
   margin-top: 6px;
 }
-.profile-card__rating {
+.profile-card__city {
   color: var(--text-secondary);
   font-size: 14px;
 }
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+.profile-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
 }
-.stat-tile {
+.profile-card__rating {
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+/* Forms (редактирование профиля) */
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.form-field__label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.text-input {
   background: var(--card);
   border: 1px solid var(--card-border);
-  border-radius: var(--radius-md);
-  padding: 14px 8px;
-  text-align: center;
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 15px;
 }
-.stat-tile__value {
-  font-size: 20px;
-  font-weight: 800;
+.text-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.text-input:disabled {
+  opacity: 0.6;
+}
+.level-picker {
+  display: flex;
+  gap: 8px;
+}
+.level-option {
+  flex: 1;
+  padding: 10px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.level-option.is-active {
+  background: var(--accent-bg);
+  border-color: var(--accent);
   color: var(--accent);
 }
-.stat-tile__label {
-  font-size: 11px;
-  color: var(--text-secondary);
-  margin-top: 4px;
+.level-option:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* Bottom nav */

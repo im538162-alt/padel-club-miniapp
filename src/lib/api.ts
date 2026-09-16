@@ -1,13 +1,13 @@
 import { FunctionsHttpError } from '@supabase/supabase-js'
 import { isSupabaseConfigured, supabase } from './supabase'
 import { getTelegramInitData } from '../utils/telegram'
-import type { CourtInfo } from '../types'
+import type { CourtInfo, PlayerProfile, SkillLevel } from '../types'
 
 const NOT_CONFIGURED_MESSAGE =
   'Supabase не настроен: заполните VITE_SUPABASE_URL и VITE_SUPABASE_PUBLISHABLE_KEY в .env.local'
 
 const NOT_IN_TELEGRAM_MESSAGE =
-  'Бронирование доступно только внутри Telegram. Откройте Padel Club через Telegram-бота и повторите попытку.'
+  'Доступно только внутри Telegram. Откройте Padel Club через Telegram-бота и повторите попытку.'
 
 export interface RemoteBooking {
   courtId: number
@@ -23,6 +23,12 @@ export interface CreateBookingInput {
 
 export interface CancelBookingInput {
   bookingId: string
+}
+
+export interface UpdatePlayerProfileInput {
+  displayName: string
+  city: string
+  skillLevel: SkillLevel
 }
 
 export interface MyBookingRow {
@@ -50,6 +56,10 @@ export interface MyBookingRow {
 // массив объектов (либо { bookings: [...] }) с полями booking_date, start_time
 // и courts.name (courts может быть как объектом, так и массивом) — код ниже
 // терпимо относится и к camelCase-варианту этих же полей.
+//
+// Профиль игрока — через Edge Function player-profile: action 'get' отдаёт
+// текущий профиль (объект напрямую либо { profile: {...} }), action 'update'
+// сохраняет displayName/city/skillLevel и не трогает рейтинг (он read-only).
 
 export async function fetchCourts(): Promise<CourtInfo[]> {
   if (!isSupabaseConfigured || !supabase) {
@@ -219,4 +229,90 @@ export async function fetchMyBookings(): Promise<MyBookingRow[]> {
       : []
 
   return rawRows.map(toMyBookingRow)
+}
+
+interface RawPlayerProfile {
+  display_name?: string
+  displayName?: string
+  name?: string
+  city?: string | null
+  skill_level?: string | number
+  skillLevel?: string | number
+  rating?: number | string
+}
+
+// skillLevel может прийти как английское слово, число (1-3) или уже готовая
+// русская подпись — терпимо приводим к одному из трёх канонических значений.
+function normalizeSkillLevel(raw: string | number | undefined): SkillLevel {
+  const value = String(raw ?? '')
+    .trim()
+    .toLowerCase()
+
+  if (['advanced', 'pro', '3', 'продвинутый'].includes(value)) return 'advanced'
+  if (['amateur', 'intermediate', '2', 'любитель'].includes(value)) return 'intermediate'
+  return 'beginner'
+}
+
+function toPlayerProfile(raw: RawPlayerProfile): PlayerProfile {
+  return {
+    displayName: raw.display_name ?? raw.displayName ?? raw.name ?? '',
+    city: raw.city ? String(raw.city) : null,
+    skillLevel: normalizeSkillLevel(raw.skill_level ?? raw.skillLevel),
+    rating: Number(raw.rating ?? 0) || 0,
+  }
+}
+
+export async function fetchPlayerProfile(): Promise<PlayerProfile> {
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error(NOT_CONFIGURED_MESSAGE)
+  }
+
+  const initData = getTelegramInitData()
+  if (!initData) {
+    throw new Error(NOT_IN_TELEGRAM_MESSAGE)
+  }
+
+  const { data, error } = await supabase.functions.invoke('player-profile', {
+    headers: {
+      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+    },
+    body: { initData, action: 'get' },
+  })
+
+  if (error) {
+    throw new Error(await resolveFunctionErrorMessage(error))
+  }
+
+  const raw: RawPlayerProfile =
+    (data as { profile?: RawPlayerProfile } | null)?.profile ?? (data as RawPlayerProfile | null) ?? {}
+
+  return toPlayerProfile(raw)
+}
+
+export async function updatePlayerProfile(input: UpdatePlayerProfileInput): Promise<void> {
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error(NOT_CONFIGURED_MESSAGE)
+  }
+
+  const initData = getTelegramInitData()
+  if (!initData) {
+    throw new Error(NOT_IN_TELEGRAM_MESSAGE)
+  }
+
+  const { error } = await supabase.functions.invoke('player-profile', {
+    headers: {
+      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+    },
+    body: {
+      initData,
+      action: 'update',
+      displayName: input.displayName,
+      city: input.city,
+      skillLevel: input.skillLevel,
+    },
+  })
+
+  if (error) {
+    throw new Error(await resolveFunctionErrorMessage(error))
+  }
 }

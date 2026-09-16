@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { CourtInfo, Game, Slot, TabId } from '../types'
+import type { CourtInfo, Game, PlayerProfile, SkillLevel, Slot, TabId } from '../types'
 
 export interface AppContextValue {
   activeTab: TabId
@@ -22,6 +22,11 @@ export interface AppContextValue {
   myGamesError: string | null
   reloadMyGames: () => void
   cancelMyGame: (game: Game) => Promise<void>
+  profile: PlayerProfile | null
+  profileLoading: boolean
+  profileError: string | null
+  reloadProfile: () => void
+  updateProfile: (input: { displayName: string; city: string; skillLevel: SkillLevel }) => Promise<void>
 }
 
 export const AppContext = createContext<AppContextValue | null>(null)

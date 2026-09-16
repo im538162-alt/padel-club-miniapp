@@ -1,43 +1,55 @@
+import { useState } from 'react'
+import { EditProfileModal } from '../components/EditProfileModal'
+import { StateNotice } from '../components/StateNotice'
+import { SKILL_LEVEL_LABELS } from '../data/skillLevels'
 import { useAppContext } from '../state/context'
 
-const PROFILE = {
-  rating: 2050,
-  played: 24,
-  wins: 16,
-}
-
 export function ProfileScreen() {
-  const { userName } = useAppContext()
-  const winRate = Math.round((PROFILE.wins / PROFILE.played) * 100)
+  const { profile, profileLoading, profileError, reloadProfile, updateProfile } = useAppContext()
+  const [isEditing, setIsEditing] = useState(false)
 
   return (
     <div className="screen">
       <h1 className="screen__title">Профиль</h1>
 
-      <div className="profile-card">
-        <div className="profile-card__avatar">{userName.charAt(0).toUpperCase()}</div>
-        <div className="profile-card__name">{userName}</div>
-        <div className="profile-card__rating">Рейтинг: {PROFILE.rating}</div>
-      </div>
+      {profileLoading && <StateNotice kind="loading" title="Загружаем профиль…" />}
 
-      <div className="stats-grid">
-        <div className="stat-tile">
-          <div className="stat-tile__value">{PROFILE.played}</div>
-          <div className="stat-tile__label">Сыграно игр</div>
-        </div>
-        <div className="stat-tile">
-          <div className="stat-tile__value">{PROFILE.wins}</div>
-          <div className="stat-tile__label">Победы</div>
-        </div>
-        <div className="stat-tile">
-          <div className="stat-tile__value">{winRate}%</div>
-          <div className="stat-tile__label">Процент побед</div>
-        </div>
-      </div>
+      {!profileLoading && profileError && (
+        <StateNotice
+          kind="error"
+          title="Не удалось загрузить профиль"
+          description={profileError}
+          onRetry={reloadProfile}
+        />
+      )}
 
-      <button type="button" className="btn btn--primary btn--full">
-        Редактировать профиль
-      </button>
+      {!profileLoading && !profileError && profile && (
+        <>
+          <div className="profile-card">
+            <div className="profile-card__avatar">
+              {(profile.displayName.charAt(0) || '?').toUpperCase()}
+            </div>
+            <div className="profile-card__name">{profile.displayName}</div>
+            <div className="profile-card__city">{profile.city || 'Город не указан'}</div>
+            <div className="profile-card__meta">
+              <span className="status-pill">{SKILL_LEVEL_LABELS[profile.skillLevel]}</span>
+              <span className="profile-card__rating">Рейтинг: {profile.rating.toFixed(1)}</span>
+            </div>
+          </div>
+
+          <button type="button" className="btn btn--primary btn--full" onClick={() => setIsEditing(true)}>
+            Редактировать профиль
+          </button>
+        </>
+      )}
+
+      {isEditing && profile && (
+        <EditProfileModal
+          profile={profile}
+          onClose={() => setIsEditing(false)}
+          onSave={updateProfile}
+        />
+      )}
     </div>
   )
 }

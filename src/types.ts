@@ -37,3 +37,13 @@ export interface Player {
   rating: number
   isCurrentUser?: boolean
 }
+
+export type SkillLevel = 'beginner' | 'intermediate' | 'advanced'
+
+// Профиль игрока — приходит из Edge Function player-profile.
+export interface PlayerProfile {
+  displayName: string
+  city: string | null
+  skillLevel: SkillLevel
+  rating: number
+}

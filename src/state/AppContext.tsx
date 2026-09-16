@@ -6,12 +6,14 @@ import {
   fetchBookingsForDate,
   fetchCourts,
   fetchMyBookings,
+  fetchPlayerProfile,
+  updatePlayerProfile,
   type MyBookingRow,
   type RemoteBooking,
 } from '../lib/api'
 import { timeToMinutes, toDateKey } from '../utils/date'
 import { getTelegramWebApp, resolveDisplayName } from '../utils/telegram'
-import type { CourtInfo, Game, Slot, TabId, UserBooking } from '../types'
+import type { CourtInfo, Game, PlayerProfile, SkillLevel, Slot, TabId, UserBooking } from '../types'
 import { AppContext, type AppContextValue } from './context'
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -132,9 +134,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .sort((a, b) => `${a.dateKey}T${a.time}`.localeCompare(`${b.dateKey}T${b.time}`))
   }, [myBookingsRaw, today])
 
+  // Профиль игрока из Edge Function player-profile — тот же приём с "загруженным"
+  // токеном, чтобы не дёргать setState синхронно в начале эффекта.
+  const [profile, setProfile] = useState<PlayerProfile | null>(null)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [profileReloadToken, setProfileReloadToken] = useState(0)
+  const [profileLoadedToken, setProfileLoadedToken] = useState(-1)
+  const profileLoading = profileLoadedToken !== profileReloadToken
+
+  useEffect(() => {
+    let cancelled = false
+
+    fetchPlayerProfile()
+      .then((data) => {
+        if (cancelled) return
+        setProfile(data)
+        setProfileError(null)
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return
+        setProfileError(error instanceof Error ? error.message : 'Не удалось загрузить профиль')
+      })
+      .finally(() => {
+        if (!cancelled) setProfileLoadedToken(profileReloadToken)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [profileReloadToken])
+
   const reloadCourts = () => setCourtsReloadToken((n) => n + 1)
   const reloadBookings = () => setBookingsReloadToken((n) => n + 1)
   const reloadMyGames = () => setMyGamesReloadToken((n) => n + 1)
+  const reloadProfile = () => setProfileReloadToken((n) => n + 1)
 
   const todayKey = toDateKey(today)
   const nowMinutes = today.getHours() * 60 + today.getMinutes()
@@ -215,6 +248,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     reloadBookings()
   }
 
+  // Сохранение профиля идёт через Edge Function player-profile (action: 'update'),
+  // рейтинг при этом не отправляется — он read-only и считается только на сервере.
+  // После успеха просто перезапрашиваем профиль, а не доверяем локальному вводу.
+  const updateProfile = async (input: { displayName: string; city: string; skillLevel: SkillLevel }) => {
+    await updatePlayerProfile(input)
+    reloadProfile()
+  }
+
   const value: AppContextValue = {
     activeTab,
     setActiveTab,
@@ -236,6 +277,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     myGamesError,
     reloadMyGames,
     cancelMyGame,
+    profile,
+    profileLoading,
+    profileError,
+    reloadProfile,
+    updateProfile,
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

@@ -178,10 +178,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   // Отмена брони — тоже через Edge Function (cancel-booking), без прямых
-  // изменений в таблице bookings. При успехе обновляем и «Мои игры», и
-  // занятость кортов на «Главной», чтобы освободившийся слот сразу был виден.
-  const cancelMyGame = async (bookingId: string) => {
-    await cancelBooking({ bookingId })
+  // изменений в таблице bookings. bookSlot никогда не убирал запись из
+  // userBookings, поэтому без этой очистки локальный оптимистичный статус
+  // «Занят» переживал отмену и держал слот перечёркнутым до перезапуска —
+  // здесь убираем именно ту запись, что соответствует отменённой игре.
+  const cancelMyGame = async (game: Game) => {
+    await cancelBooking({ bookingId: game.id })
+
+    setUserBookings((prev) =>
+      prev.filter((b) => {
+        const courtName = courts.find((c) => c.id === b.courtId)?.name ?? `Корт ${b.courtId}`
+        return !(b.dateKey === game.dateKey && b.time === game.time && courtName === game.courtName)
+      }),
+    )
 
     reloadMyGames()
     reloadBookings()

@@ -18,7 +18,7 @@ export function GameCard({ game }: Props) {
     setCancelError(null)
     setIsCancelling(true)
     try {
-      await cancelMyGame(game.id)
+      await cancelMyGame(game)
       setShowConfirm(false)
     } catch (error) {
       setCancelError(error instanceof Error ? error.message : 'Не удалось отменить бронирование')

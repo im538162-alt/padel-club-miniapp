@@ -1,13 +1,15 @@
 import { FunctionsHttpError } from '@supabase/supabase-js'
 import { isSupabaseConfigured, supabase } from './supabase'
 import { getTelegramInitData } from '../utils/telegram'
-import type { CourtInfo, LeaderboardEntry, PlayerProfile, SkillLevel } from '../types'
+import type { AdminBookingRow, AdminDashboard, CourtInfo, LeaderboardEntry, PlayerProfile, SkillLevel } from '../types'
 
 const NOT_CONFIGURED_MESSAGE =
   'Supabase не настроен: заполните VITE_SUPABASE_URL и VITE_SUPABASE_PUBLISHABLE_KEY в .env.local'
 
 const NOT_IN_TELEGRAM_MESSAGE =
   'Доступно только внутри Telegram. Откройте Padel Club через Telegram-бота и повторите попытку.'
+
+const ADMIN_NOT_IN_TELEGRAM_MESSAGE = 'Админ-панель доступна только внутри Telegram.'
 
 export interface RemoteBooking {
   courtId: number
@@ -70,6 +72,11 @@ export interface MyBookingRow {
 // Фото профиля — через Edge Function upload-avatar: body { initData, imageDataUrl },
 // ответ содержит либо готовый URL, либо путь в бакете avatars (из которого URL
 // строится тем же способом, что и для профиля).
+//
+// Админ-панель — через Edge Function admin-dashboard: body { initData }, ответ
+// { stats: { activeCourts, players, confirmedBookings }, recentBookings: [...] }.
+// Доступна только внутри Telegram и только администраторам — 403 от функции
+// означает «не админ» и не является ошибкой (см. fetchAdminDashboard).
 
 export async function fetchCourts(): Promise<CourtInfo[]> {
   if (!isSupabaseConfigured || !supabase) {
@@ -465,4 +472,88 @@ export async function uploadProfileAvatar(file: File): Promise<string | null> {
 
   const path = raw?.path ?? raw?.avatarPath ?? raw?.avatar_path
   return buildAvatarUrl(path)
+}
+
+interface RawAdminCourt {
+  name?: string
+}
+
+interface RawAdminBooking {
+  id: string
+  booking_date: string
+  start_time: string
+  end_time: string
+  status: 'confirmed' | 'cancelled'
+  player_name: string
+  created_at: string
+  courts: RawAdminCourt | RawAdminCourt[] | null
+}
+
+interface RawAdminDashboard {
+  stats?: {
+    activeCourts?: number
+    players?: number
+    confirmedBookings?: number
+  }
+  recentBookings?: RawAdminBooking[]
+}
+
+// courts может прийти объектом, массивом или null — отдельный хелпер, чтобы не
+// трогать extractCourtsName из fetchMyBookings (та завязана на другой тип).
+function extractAdminCourtName(courts: RawAdminBooking['courts']): string {
+  if (Array.isArray(courts)) return courts[0]?.name ?? 'Корт'
+  return courts?.name ?? 'Корт'
+}
+
+function toAdminBookingRow(raw: RawAdminBooking): AdminBookingRow {
+  return {
+    id: raw.id,
+    courtName: extractAdminCourtName(raw.courts),
+    dateKey: raw.booking_date,
+    startTime: String(raw.start_time).slice(0, 5),
+    endTime: String(raw.end_time).slice(0, 5),
+    status: raw.status,
+    playerName: raw.player_name,
+    createdAt: raw.created_at,
+  }
+}
+
+function toAdminDashboard(raw: RawAdminDashboard): AdminDashboard {
+  return {
+    stats: {
+      activeCourts: Number(raw.stats?.activeCourts ?? 0) || 0,
+      players: Number(raw.stats?.players ?? 0) || 0,
+      confirmedBookings: Number(raw.stats?.confirmedBookings ?? 0) || 0,
+    },
+    recentBookings: (raw.recentBookings ?? []).map(toAdminBookingRow),
+  }
+}
+
+// Возвращает null, если Edge Function ответила 403 — это означает «текущий
+// пользователь не администратор», ожидаемый исход, а не сбой сети или конфига.
+export async function fetchAdminDashboard(): Promise<AdminDashboard | null> {
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error(NOT_CONFIGURED_MESSAGE)
+  }
+
+  const initData = getTelegramInitData()
+  if (!initData) {
+    throw new Error(ADMIN_NOT_IN_TELEGRAM_MESSAGE)
+  }
+
+  const { data, error } = await supabase.functions.invoke('admin-dashboard', {
+    headers: {
+      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+    },
+    body: { initData },
+  })
+
+  if (error) {
+    if (error instanceof FunctionsHttpError && error.context?.status === 403) {
+      return null
+    }
+    throw new Error(await resolveFunctionErrorMessage(error))
+  }
+
+  return toAdminDashboard(data as RawAdminDashboard)
 }

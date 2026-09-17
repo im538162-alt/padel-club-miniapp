@@ -52,3 +52,27 @@ export interface LeaderboardEntry {
   rating: number
   isCurrentUser: boolean
 }
+
+export type AdminBookingStatus = 'confirmed' | 'cancelled'
+
+export interface AdminBookingRow {
+  id: string
+  courtName: string
+  dateKey: string
+  startTime: string
+  endTime: string
+  status: AdminBookingStatus
+  playerName: string
+  createdAt: string
+}
+
+// Данные админ-панели — приходят только из Edge Function admin-dashboard,
+// доступной исключительно внутри Telegram админам приложения.
+export interface AdminDashboard {
+  stats: {
+    activeCourts: number
+    players: number
+    confirmedBookings: number
+  }
+  recentBookings: AdminBookingRow[]
+}

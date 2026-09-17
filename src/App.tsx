@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { AuthGate } from './components/AuthGate'
 import { BottomNav } from './components/BottomNav'
+import { AdminScreen } from './screens/AdminScreen'
 import { HomeScreen } from './screens/HomeScreen'
 import { MyGamesScreen } from './screens/MyGamesScreen'
 import { ProfileScreen } from './screens/ProfileScreen'
@@ -10,16 +12,23 @@ import './App.css'
 
 function AppShell() {
   const { activeTab, setActiveTab } = useAppContext()
+  const [showAdmin, setShowAdmin] = useState(false)
 
   return (
     <div className="app-shell">
       <main className="app-content">
-        {activeTab === 'home' && <HomeScreen />}
-        {activeTab === 'games' && <MyGamesScreen />}
-        {activeTab === 'rating' && <RatingScreen />}
-        {activeTab === 'profile' && <ProfileScreen />}
+        {showAdmin ? (
+          <AdminScreen onBack={() => setShowAdmin(false)} />
+        ) : (
+          <>
+            {activeTab === 'home' && <HomeScreen />}
+            {activeTab === 'games' && <MyGamesScreen />}
+            {activeTab === 'rating' && <RatingScreen />}
+            {activeTab === 'profile' && <ProfileScreen onOpenAdmin={() => setShowAdmin(true)} />}
+          </>
+        )}
       </main>
-      <BottomNav active={activeTab} onChange={setActiveTab} />
+      {!showAdmin && <BottomNav active={activeTab} onChange={setActiveTab} />}
     </div>
   )
 }

@@ -3,6 +3,7 @@ import { SLOT_DURATION_MINUTES, TIME_SLOTS } from '../data/constants'
 import {
   cancelBooking,
   createBooking,
+  fetchAdminDashboard,
   fetchBookingsForDate,
   fetchCourts,
   fetchLeaderboard,
@@ -14,8 +15,9 @@ import {
   type RemoteBooking,
 } from '../lib/api'
 import { timeToMinutes, toDateKey } from '../utils/date'
-import { getTelegramWebApp, resolveDisplayName } from '../utils/telegram'
+import { getTelegramInitData, getTelegramWebApp, resolveDisplayName } from '../utils/telegram'
 import type {
+  AdminDashboard,
   CourtInfo,
   Game,
   LeaderboardEntry,
@@ -205,11 +207,57 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [leaderboardReloadToken])
 
+  // Админ-панель из Edge Function admin-dashboard — доступна только внутри
+  // Telegram и только администраторам. Вне Telegram проверку не выполняем
+  // вовсе (isAdmin остаётся false, запрос не уходит). 403 от функции значит
+  // «не админ» — это не ошибка, поэтому adminDashboardError не выставляется,
+  // просто isAdmin становится false. Всё завёрнуто в Promise-цепочку (а не
+  // синхронный if в начале эффекта), чтобы setState всегда происходил внутри
+  // .then/.catch/.finally — тот же приём, что и в остальных эффектах здесь.
+  const [adminDashboard, setAdminDashboard] = useState<AdminDashboard | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [adminDashboardError, setAdminDashboardError] = useState<string | null>(null)
+  const [adminDashboardReloadToken, setAdminDashboardReloadToken] = useState(0)
+  const [adminDashboardLoadedToken, setAdminDashboardLoadedToken] = useState(-1)
+  const adminDashboardLoading = adminDashboardLoadedToken !== adminDashboardReloadToken
+
+  useEffect(() => {
+    let cancelled = false
+
+    Promise.resolve()
+      .then(() => (getTelegramInitData() ? fetchAdminDashboard() : undefined))
+      .then((data) => {
+        if (cancelled || data === undefined) return
+        if (data === null) {
+          setIsAdmin(false)
+          setAdminDashboard(null)
+        } else {
+          setIsAdmin(true)
+          setAdminDashboard(data)
+        }
+        setAdminDashboardError(null)
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return
+        setAdminDashboardError(
+          error instanceof Error ? error.message : 'Не удалось загрузить админ-панель',
+        )
+      })
+      .finally(() => {
+        if (!cancelled) setAdminDashboardLoadedToken(adminDashboardReloadToken)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [adminDashboardReloadToken])
+
   const reloadCourts = () => setCourtsReloadToken((n) => n + 1)
   const reloadBookings = () => setBookingsReloadToken((n) => n + 1)
   const reloadMyGames = () => setMyGamesReloadToken((n) => n + 1)
   const reloadProfile = () => setProfileReloadToken((n) => n + 1)
   const reloadLeaderboard = () => setLeaderboardReloadToken((n) => n + 1)
+  const reloadAdminDashboard = () => setAdminDashboardReloadToken((n) => n + 1)
 
   const todayKey = toDateKey(today)
   const nowMinutes = today.getHours() * 60 + today.getMinutes()
@@ -337,6 +385,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     leaderboardLoading,
     leaderboardError,
     reloadLeaderboard,
+    adminDashboard,
+    adminDashboardLoading,
+    adminDashboardError,
+    isAdmin,
+    reloadAdminDashboard,
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

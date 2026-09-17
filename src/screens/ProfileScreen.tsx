@@ -6,8 +6,12 @@ import { signOutEmailSession } from '../lib/auth'
 import { useAppContext } from '../state/context'
 import { getTelegramInitData } from '../utils/telegram'
 
-export function ProfileScreen() {
-  const { profile, profileLoading, profileError, reloadProfile, updateProfile, uploadAvatar } =
+interface Props {
+  onOpenAdmin: () => void
+}
+
+export function ProfileScreen({ onOpenAdmin }: Props) {
+  const { profile, profileLoading, profileError, reloadProfile, updateProfile, uploadAvatar, isAdmin } =
     useAppContext()
   const isTelegram = Boolean(getTelegramInitData())
   const [isEditing, setIsEditing] = useState(false)
@@ -109,6 +113,12 @@ export function ProfileScreen() {
           <button type="button" className="btn btn--primary btn--full" onClick={() => setIsEditing(true)}>
             Редактировать профиль
           </button>
+
+          {isAdmin && (
+            <button type="button" className="btn btn--ghost btn--full" onClick={onOpenAdmin}>
+              Админ-панель
+            </button>
+          )}
 
           {!isTelegram && (
             <>

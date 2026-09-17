@@ -1,5 +1,14 @@
 import { createContext, useContext } from 'react'
-import type { CourtInfo, Game, LeaderboardEntry, PlayerProfile, SkillLevel, Slot, TabId } from '../types'
+import type {
+  AdminDashboard,
+  CourtInfo,
+  Game,
+  LeaderboardEntry,
+  PlayerProfile,
+  SkillLevel,
+  Slot,
+  TabId,
+} from '../types'
 
 export interface AppContextValue {
   activeTab: TabId
@@ -32,6 +41,11 @@ export interface AppContextValue {
   leaderboardLoading: boolean
   leaderboardError: string | null
   reloadLeaderboard: () => void
+  adminDashboard: AdminDashboard | null
+  adminDashboardLoading: boolean
+  adminDashboardError: string | null
+  isAdmin: boolean
+  reloadAdminDashboard: () => void
 }
 
 export const AppContext = createContext<AppContextValue | null>(null)

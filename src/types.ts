@@ -66,6 +66,12 @@ export interface AdminBookingRow {
   createdAt: string
 }
 
+export interface AdminCourt {
+  id: number
+  name: string
+  active: boolean
+}
+
 // Данные админ-панели — приходят только из Edge Function admin-dashboard,
 // доступной исключительно внутри Telegram админам приложения.
 export interface AdminDashboard {
@@ -74,5 +80,39 @@ export interface AdminDashboard {
     players: number
     confirmedBookings: number
   }
+  courts: AdminCourt[]
   recentBookings: AdminBookingRow[]
+}
+
+export interface OpenMatchOrganizer {
+  displayName: string
+  city: string | null
+  skillLevel: SkillLevel
+  rating: number
+  avatarUrl: string | null
+}
+
+export interface OpenMatchParticipant {
+  isOrganizer: boolean
+  displayName: string
+  skillLevel: SkillLevel | null
+  rating: number | null
+  avatarUrl: string | null
+}
+
+// Открытая игра — приходит только из Edge Function open-matches,
+// доступной исключительно внутри Telegram.
+export interface OpenMatch {
+  id: string
+  bookingId: string
+  capacity: 2 | 4
+  participantsCount: number
+  availableSpots: number
+  isCurrentUserParticipant: boolean
+  courtName: string
+  dateKey: string
+  startTime: string
+  endTime: string
+  organizer: OpenMatchOrganizer | null
+  participants: OpenMatchParticipant[]
 }

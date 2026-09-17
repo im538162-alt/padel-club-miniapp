@@ -4,8 +4,13 @@ import { CourtCard } from '../components/CourtCard'
 import { DateSelector } from '../components/DateSelector'
 import { StateNotice } from '../components/StateNotice'
 import { useAppContext } from '../state/context'
+import { getTelegramInitData } from '../utils/telegram'
 
-export function HomeScreen() {
+interface Props {
+  onOpenOpenMatches: () => void
+}
+
+export function HomeScreen({ onOpenOpenMatches }: Props) {
   const {
     today,
     selectedDateKey,
@@ -22,6 +27,7 @@ export function HomeScreen() {
     reloadBookings,
   } = useAppContext()
   const [bookingCourtId, setBookingCourtId] = useState<number | null>(null)
+  const isTelegram = Boolean(getTelegramInitData())
 
   const bookingCourt = courts.find((court) => court.id === bookingCourtId) ?? null
 
@@ -31,6 +37,12 @@ export function HomeScreen() {
         <h1>Привет, {userName} 👋</h1>
         <p>Выбирай корт и время для игры</p>
       </div>
+
+      {isTelegram && (
+        <button type="button" className="btn btn--ghost btn--full" onClick={onOpenOpenMatches}>
+          Открытые игры
+        </button>
+      )}
 
       <DateSelector today={today} selectedDateKey={selectedDateKey} onSelect={setSelectedDateKey} />
 

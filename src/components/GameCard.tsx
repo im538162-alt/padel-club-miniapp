@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { formatDateWithWeekday } from '../utils/date'
 import { useAppContext } from '../state/context'
 import { ConfirmDialog } from './ConfirmDialog'
+import { CreateOpenMatchModal } from './CreateOpenMatchModal'
 import type { Game } from '../types'
 
 interface Props {
@@ -9,10 +10,11 @@ interface Props {
 }
 
 export function GameCard({ game }: Props) {
-  const { cancelMyGame } = useAppContext()
+  const { cancelMyGame, createOpenMatch } = useAppContext()
   const [showConfirm, setShowConfirm] = useState(false)
   const [isCancelling, setIsCancelling] = useState(false)
   const [cancelError, setCancelError] = useState<string | null>(null)
+  const [showOpenMatchModal, setShowOpenMatchModal] = useState(false)
 
   const handleCancel = async () => {
     setCancelError(null)
@@ -38,6 +40,8 @@ export function GameCard({ game }: Props) {
     setCancelError(null)
   }
 
+  const handleCreateOpenMatch = (capacity: 2 | 4) => createOpenMatch(game.id, capacity)
+
   return (
     <>
       <div className={`game-card ${game.isUpcoming ? 'is-upcoming' : 'is-past'}`}>
@@ -52,6 +56,13 @@ export function GameCard({ game }: Props) {
           {game.isUpcoming ? (
             <>
               <span className="status-pill status-pill--upcoming">Забронировано</span>
+              <button
+                type="button"
+                className="btn btn--ghost btn--small"
+                onClick={() => setShowOpenMatchModal(true)}
+              >
+                Открыть для игроков
+              </button>
               <button type="button" className="btn btn--ghost btn--small" onClick={openConfirm}>
                 Отменить
               </button>
@@ -72,6 +83,13 @@ export function GameCard({ game }: Props) {
           error={cancelError}
           onConfirm={handleCancel}
           onDismiss={dismissConfirm}
+        />
+      )}
+
+      {showOpenMatchModal && (
+        <CreateOpenMatchModal
+          onClose={() => setShowOpenMatchModal(false)}
+          onCreate={handleCreateOpenMatch}
         />
       )}
     </>

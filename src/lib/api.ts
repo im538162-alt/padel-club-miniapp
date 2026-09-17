@@ -1,7 +1,18 @@
 import { FunctionsHttpError } from '@supabase/supabase-js'
 import { isSupabaseConfigured, supabase } from './supabase'
 import { getTelegramInitData } from '../utils/telegram'
-import type { AdminBookingRow, AdminDashboard, CourtInfo, LeaderboardEntry, PlayerProfile, SkillLevel } from '../types'
+import type {
+  AdminBookingRow,
+  AdminCourt,
+  AdminDashboard,
+  CourtInfo,
+  LeaderboardEntry,
+  OpenMatch,
+  OpenMatchOrganizer,
+  OpenMatchParticipant,
+  PlayerProfile,
+  SkillLevel,
+} from '../types'
 
 const NOT_CONFIGURED_MESSAGE =
   'Supabase не настроен: заполните VITE_SUPABASE_URL и VITE_SUPABASE_PUBLISHABLE_KEY в .env.local'
@@ -10,6 +21,8 @@ const NOT_IN_TELEGRAM_MESSAGE =
   'Доступно только внутри Telegram. Откройте Padel Club через Telegram-бота и повторите попытку.'
 
 const ADMIN_NOT_IN_TELEGRAM_MESSAGE = 'Админ-панель доступна только внутри Telegram.'
+
+const OPEN_MATCHES_NOT_IN_TELEGRAM_MESSAGE = 'Открытые игры доступны только внутри Telegram.'
 
 export interface RemoteBooking {
   courtId: number
@@ -73,10 +86,15 @@ export interface MyBookingRow {
 // ответ содержит либо готовый URL, либо путь в бакете avatars (из которого URL
 // строится тем же способом, что и для профиля).
 //
-// Админ-панель — через Edge Function admin-dashboard: body { initData }, ответ
-// { stats: { activeCourts, players, confirmedBookings }, recentBookings: [...] }.
-// Доступна только внутри Telegram и только администраторам — 403 от функции
-// означает «не админ» и не является ошибкой (см. fetchAdminDashboard).
+// Админ-панель — через Edge Function admin-dashboard, три action на один и тот
+// же endpoint: 'overview' (только чтение), 'createCourt' ({ name }),
+// 'updateCourt' ({ courtId, name?, active? }). Все принимают { initData, action, ... }
+// и возвращают один и тот же полный dashboard:
+// { stats: { activeCourts, players, confirmedBookings }, courts: [...], recentBookings: [...] }.
+// Доступна только внутри Telegram и только администраторам — 403 от 'overview'
+// означает «не админ» и не является ошибкой (см. fetchAdminDashboard); 403 от
+// createCourt/updateCourt — обычная ошибка, т.к. эти действия и так вызываются
+// только уже подтверждённым админом.
 
 export async function fetchCourts(): Promise<CourtInfo[]> {
   if (!isSupabaseConfigured || !supabase) {
@@ -474,7 +492,7 @@ export async function uploadProfileAvatar(file: File): Promise<string | null> {
   return buildAvatarUrl(path)
 }
 
-interface RawAdminCourt {
+interface RawAdminBookingCourt {
   name?: string
 }
 
@@ -486,7 +504,13 @@ interface RawAdminBooking {
   status: 'confirmed' | 'cancelled'
   player_name: string
   created_at: string
-  courts: RawAdminCourt | RawAdminCourt[] | null
+  courts: RawAdminBookingCourt | RawAdminBookingCourt[] | null
+}
+
+interface RawAdminCourtEntry {
+  id?: number | string
+  name?: string
+  active?: boolean
 }
 
 interface RawAdminDashboard {
@@ -495,6 +519,7 @@ interface RawAdminDashboard {
     players?: number
     confirmedBookings?: number
   }
+  courts?: RawAdminCourtEntry[]
   recentBookings?: RawAdminBooking[]
 }
 
@@ -518,6 +543,14 @@ function toAdminBookingRow(raw: RawAdminBooking): AdminBookingRow {
   }
 }
 
+function toAdminCourtEntry(raw: RawAdminCourtEntry): AdminCourt {
+  return {
+    id: Number(raw.id ?? 0) || 0,
+    name: raw.name ?? '',
+    active: Boolean(raw.active),
+  }
+}
+
 function toAdminDashboard(raw: RawAdminDashboard): AdminDashboard {
   return {
     stats: {
@@ -525,13 +558,15 @@ function toAdminDashboard(raw: RawAdminDashboard): AdminDashboard {
       players: Number(raw.stats?.players ?? 0) || 0,
       confirmedBookings: Number(raw.stats?.confirmedBookings ?? 0) || 0,
     },
+    courts: (raw.courts ?? []).map(toAdminCourtEntry),
     recentBookings: (raw.recentBookings ?? []).map(toAdminBookingRow),
   }
 }
 
-// Возвращает null, если Edge Function ответила 403 — это означает «текущий
-// пользователь не администратор», ожидаемый исход, а не сбой сети или конфига.
-export async function fetchAdminDashboard(): Promise<AdminDashboard | null> {
+// Общий вызов admin-dashboard для всех admin-действий (overview/createCourt/
+// updateCourt) — один набор заголовков/initData/проверок на все три, чтобы не
+// дублировать эту часть в каждой функции.
+async function callAdminDashboard(extraBody: Record<string, unknown>) {
   if (!isSupabaseConfigured || !supabase) {
     throw new Error(NOT_CONFIGURED_MESSAGE)
   }
@@ -541,12 +576,18 @@ export async function fetchAdminDashboard(): Promise<AdminDashboard | null> {
     throw new Error(ADMIN_NOT_IN_TELEGRAM_MESSAGE)
   }
 
-  const { data, error } = await supabase.functions.invoke('admin-dashboard', {
+  return supabase.functions.invoke('admin-dashboard', {
     headers: {
       Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
     },
-    body: { initData },
+    body: { initData, ...extraBody },
   })
+}
+
+// Возвращает null, если Edge Function ответила 403 — это означает «текущий
+// пользователь не администратор», ожидаемый исход, а не сбой сети или конфига.
+export async function fetchAdminDashboard(): Promise<AdminDashboard | null> {
+  const { data, error } = await callAdminDashboard({ action: 'overview' })
 
   if (error) {
     if (error instanceof FunctionsHttpError && error.context?.status === 403) {
@@ -556,4 +597,176 @@ export async function fetchAdminDashboard(): Promise<AdminDashboard | null> {
   }
 
   return toAdminDashboard(data as RawAdminDashboard)
+}
+
+// createCourt/updateCourt вызываются только уже подтверждённым админом (кнопки
+// в AdminScreen видны лишь при isAdmin), поэтому здесь 403 не заглушаем —
+// это будет означать настоящий сбой и должно дойти до пользователя как ошибка.
+export async function createAdminCourt(name: string): Promise<AdminDashboard> {
+  const { data, error } = await callAdminDashboard({ action: 'createCourt', name })
+
+  if (error) {
+    throw new Error(await resolveFunctionErrorMessage(error))
+  }
+
+  return toAdminDashboard(data as RawAdminDashboard)
+}
+
+export async function updateAdminCourt(
+  courtId: number,
+  updates: { name?: string; active?: boolean },
+): Promise<AdminDashboard> {
+  const { data, error } = await callAdminDashboard({
+    action: 'updateCourt',
+    courtId,
+    ...updates,
+  })
+
+  if (error) {
+    throw new Error(await resolveFunctionErrorMessage(error))
+  }
+
+  return toAdminDashboard(data as RawAdminDashboard)
+}
+
+// Открытые игры — через Edge Function open-matches: action 'list' отдаёт все
+// открытые игры, 'create' открывает игру на основе своей будущей брони
+// ({ bookingId, capacity }), 'join' присоединяет к игре ({ matchId }). Все три
+// возвращают один и тот же { matches: [...] } — полный актуальный список.
+interface RawOpenMatchPerson {
+  display_name?: string
+  displayName?: string
+  city?: string | null
+  skill_level?: string | number
+  skillLevel?: string | number
+  rating?: number | string
+  avatar_path?: string | null
+  avatarPath?: string | null
+}
+
+interface RawOpenMatchParticipant extends RawOpenMatchPerson {
+  isOrganizer?: boolean
+  is_organizer?: boolean
+}
+
+interface RawOpenMatch {
+  id: string
+  booking_id?: string
+  bookingId?: string
+  capacity: number | string
+  participants_count?: number
+  participantsCount?: number
+  available_spots?: number
+  availableSpots?: number
+  is_current_user_participant?: boolean
+  isCurrentUserParticipant?: boolean
+  court_name?: string
+  courtName?: string
+  booking_date?: string
+  bookingDate?: string
+  start_time?: string
+  startTime?: string
+  end_time?: string
+  endTime?: string
+  organizer?: RawOpenMatchPerson | null
+  participants?: RawOpenMatchParticipant[]
+}
+
+function toOpenMatchOrganizer(raw: RawOpenMatchPerson | null | undefined): OpenMatchOrganizer | null {
+  if (!raw) return null
+
+  const avatarPath = raw.avatar_path ?? raw.avatarPath ?? null
+
+  return {
+    displayName: raw.display_name ?? raw.displayName ?? '',
+    city: raw.city ? String(raw.city) : null,
+    skillLevel: normalizeSkillLevel(raw.skill_level ?? raw.skillLevel),
+    rating: Number(raw.rating ?? 0) || 0,
+    avatarUrl: buildAvatarUrl(avatarPath),
+  }
+}
+
+function toOpenMatchParticipant(raw: RawOpenMatchParticipant): OpenMatchParticipant {
+  const avatarPath = raw.avatar_path ?? raw.avatarPath ?? null
+  const rawSkillLevel = raw.skill_level ?? raw.skillLevel
+
+  return {
+    isOrganizer: Boolean(raw.isOrganizer ?? raw.is_organizer ?? false),
+    displayName: raw.display_name ?? raw.displayName ?? '',
+    skillLevel: rawSkillLevel != null ? normalizeSkillLevel(rawSkillLevel) : null,
+    rating: raw.rating != null ? Number(raw.rating) || 0 : null,
+    avatarUrl: buildAvatarUrl(avatarPath),
+  }
+}
+
+function toOpenMatch(raw: RawOpenMatch): OpenMatch {
+  return {
+    id: String(raw.id),
+    bookingId: String(raw.booking_id ?? raw.bookingId ?? ''),
+    capacity: Number(raw.capacity) === 2 ? 2 : 4,
+    participantsCount: Number(raw.participants_count ?? raw.participantsCount ?? 0) || 0,
+    availableSpots: Number(raw.available_spots ?? raw.availableSpots ?? 0) || 0,
+    isCurrentUserParticipant: Boolean(
+      raw.is_current_user_participant ?? raw.isCurrentUserParticipant ?? false,
+    ),
+    courtName: raw.court_name ?? raw.courtName ?? 'Корт',
+    dateKey: raw.booking_date ?? raw.bookingDate ?? '',
+    startTime: String(raw.start_time ?? raw.startTime ?? '').slice(0, 5),
+    endTime: String(raw.end_time ?? raw.endTime ?? '').slice(0, 5),
+    organizer: toOpenMatchOrganizer(raw.organizer),
+    participants: (raw.participants ?? []).map(toOpenMatchParticipant),
+  }
+}
+
+async function callOpenMatches(extraBody: Record<string, unknown>) {
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error(NOT_CONFIGURED_MESSAGE)
+  }
+
+  const initData = getTelegramInitData()
+  if (!initData) {
+    throw new Error(OPEN_MATCHES_NOT_IN_TELEGRAM_MESSAGE)
+  }
+
+  return supabase.functions.invoke('open-matches', {
+    headers: {
+      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+    },
+    body: { initData, ...extraBody },
+  })
+}
+
+function extractOpenMatches(data: unknown): RawOpenMatch[] {
+  const wrapped = data as { matches?: unknown } | null
+  return Array.isArray(wrapped?.matches) ? (wrapped as { matches: RawOpenMatch[] }).matches : []
+}
+
+export async function fetchOpenMatches(): Promise<OpenMatch[]> {
+  const { data, error } = await callOpenMatches({ action: 'list' })
+
+  if (error) {
+    throw new Error(await resolveFunctionErrorMessage(error))
+  }
+
+  return extractOpenMatches(data).map(toOpenMatch)
+}
+
+export async function createOpenMatch(bookingId: string, capacity: 2 | 4): Promise<OpenMatch[]> {
+  const { data, error } = await callOpenMatches({ action: 'create', bookingId, capacity })
+
+  if (error) {
+    throw new Error(await resolveFunctionErrorMessage(error))
+  }
+
+  return extractOpenMatches(data).map(toOpenMatch)
+}
+
+export async function joinOpenMatch(matchId: string): Promise<OpenMatch[]> {
+  const { data, error } = await callOpenMatches({ action: 'join', matchId })
+
+  if (error) {
+    throw new Error(await resolveFunctionErrorMessage(error))
+  }
+
+  return extractOpenMatches(data).map(toOpenMatch)
 }

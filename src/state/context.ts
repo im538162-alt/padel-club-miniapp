@@ -4,6 +4,7 @@ import type {
   CourtInfo,
   Game,
   LeaderboardEntry,
+  OpenMatch,
   PlayerProfile,
   SkillLevel,
   Slot,
@@ -46,6 +47,14 @@ export interface AppContextValue {
   adminDashboardError: string | null
   isAdmin: boolean
   reloadAdminDashboard: () => void
+  createCourt: (name: string) => Promise<void>
+  updateCourt: (courtId: number, updates: { name?: string; active?: boolean }) => Promise<void>
+  openMatches: OpenMatch[]
+  openMatchesLoading: boolean
+  openMatchesError: string | null
+  reloadOpenMatches: () => void
+  createOpenMatch: (bookingId: string, capacity: 2 | 4) => Promise<void>
+  joinOpenMatch: (matchId: string) => Promise<void>
 }
 
 export const AppContext = createContext<AppContextValue | null>(null)

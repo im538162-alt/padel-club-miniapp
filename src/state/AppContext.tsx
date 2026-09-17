@@ -2,13 +2,18 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { SLOT_DURATION_MINUTES, TIME_SLOTS } from '../data/constants'
 import {
   cancelBooking,
+  createAdminCourt,
   createBooking,
+  createOpenMatch as apiCreateOpenMatch,
   fetchAdminDashboard,
   fetchBookingsForDate,
   fetchCourts,
   fetchLeaderboard,
   fetchMyBookings,
+  fetchOpenMatches,
   fetchPlayerProfile,
+  joinOpenMatch as apiJoinOpenMatch,
+  updateAdminCourt,
   updatePlayerProfile,
   uploadProfileAvatar,
   type MyBookingRow,
@@ -21,6 +26,7 @@ import type {
   CourtInfo,
   Game,
   LeaderboardEntry,
+  OpenMatch,
   PlayerProfile,
   SkillLevel,
   Slot,
@@ -252,12 +258,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [adminDashboardReloadToken])
 
+  // Открытые игры из Edge Function open-matches — доступны только внутри
+  // Telegram, вне его не запрашиваем вовсе (тот же приём, что и для admin
+  // dashboard: Promise-цепочка, чтобы не дёргать setState синхронно в эффекте).
+  const [openMatches, setOpenMatches] = useState<OpenMatch[]>([])
+  const [openMatchesError, setOpenMatchesError] = useState<string | null>(null)
+  const [openMatchesReloadToken, setOpenMatchesReloadToken] = useState(0)
+  const [openMatchesLoadedToken, setOpenMatchesLoadedToken] = useState(-1)
+  const openMatchesLoading = openMatchesLoadedToken !== openMatchesReloadToken
+
+  useEffect(() => {
+    let cancelled = false
+
+    Promise.resolve()
+      .then(() => (getTelegramInitData() ? fetchOpenMatches() : undefined))
+      .then((data) => {
+        if (cancelled || data === undefined) return
+        setOpenMatches(data)
+        setOpenMatchesError(null)
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return
+        setOpenMatchesError(
+          error instanceof Error ? error.message : 'Не удалось загрузить открытые игры',
+        )
+      })
+      .finally(() => {
+        if (!cancelled) setOpenMatchesLoadedToken(openMatchesReloadToken)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [openMatchesReloadToken])
+
   const reloadCourts = () => setCourtsReloadToken((n) => n + 1)
   const reloadBookings = () => setBookingsReloadToken((n) => n + 1)
   const reloadMyGames = () => setMyGamesReloadToken((n) => n + 1)
   const reloadProfile = () => setProfileReloadToken((n) => n + 1)
   const reloadLeaderboard = () => setLeaderboardReloadToken((n) => n + 1)
   const reloadAdminDashboard = () => setAdminDashboardReloadToken((n) => n + 1)
+  const reloadOpenMatches = () => setOpenMatchesReloadToken((n) => n + 1)
 
   const todayKey = toDateKey(today)
   const nowMinutes = today.getHours() * 60 + today.getMinutes()
@@ -354,6 +395,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
     reloadProfile()
   }
 
+  // createCourt/updateCourt — тоже через admin-dashboard. Функция сама
+  // возвращает полный обновлённый dashboard, поэтому сохраняем его напрямую
+  // из ответа, не делая лишний повторный запрос через reloadAdminDashboard.
+  const createCourt = async (name: string) => {
+    const dashboard = await createAdminCourt(name)
+    setAdminDashboard(dashboard)
+  }
+
+  const updateCourt = async (courtId: number, updates: { name?: string; active?: boolean }) => {
+    const dashboard = await updateAdminCourt(courtId, updates)
+    setAdminDashboard(dashboard)
+  }
+
+  // createOpenMatch/joinOpenMatch тоже возвращают полный актуальный список
+  // открытых игр — сохраняем его напрямую, без отдельного reloadOpenMatches.
+  const createOpenMatch = async (bookingId: string, capacity: 2 | 4) => {
+    const matches = await apiCreateOpenMatch(bookingId, capacity)
+    setOpenMatches(matches)
+  }
+
+  const joinOpenMatch = async (matchId: string) => {
+    const matches = await apiJoinOpenMatch(matchId)
+    setOpenMatches(matches)
+  }
+
   const value: AppContextValue = {
     activeTab,
     setActiveTab,
@@ -390,6 +456,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     adminDashboardError,
     isAdmin,
     reloadAdminDashboard,
+    createCourt,
+    updateCourt,
+    openMatches,
+    openMatchesLoading,
+    openMatchesError,
+    reloadOpenMatches,
+    createOpenMatch,
+    joinOpenMatch,
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

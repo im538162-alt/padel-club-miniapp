@@ -87,6 +87,39 @@ export function OpenMatchesScreen({ onBack }: Props) {
                     {match.participantsCount} из {match.capacity} игроков
                     {match.availableSpots > 0 ? ` · Осталось мест: ${match.availableSpots}` : ''}
                   </div>
+
+                  {match.participants.length > 0 && (
+                    <>
+                      <div className="section-title">Участники</div>
+                      <div className="rating-list">
+                        {match.participants.map((participant, index) => (
+                          <div key={index} className="rating-row">
+                            {participant.avatarUrl ? (
+                              <img
+                                className="rating-row__avatar rating-row__avatar--photo"
+                                src={participant.avatarUrl}
+                                alt=""
+                              />
+                            ) : (
+                              <div className="rating-row__avatar">
+                                {(participant.displayName.charAt(0) || '?').toUpperCase()}
+                              </div>
+                            )}
+                            <div className="rating-row__info">
+                              <div className="rating-row__name">{participant.displayName}</div>
+                              <div className="rating-row__level">
+                                {participant.isOrganizer ? 'Организатор' : 'Участник'}
+                                {participant.skillLevel
+                                  ? ` · ${SKILL_LEVEL_LABELS[participant.skillLevel]}`
+                                  : ''}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
                   {matchJoinError && (
                     <StateNotice
                       kind="error"

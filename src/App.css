@@ -476,6 +476,9 @@
   font-weight: 700;
   flex-shrink: 0;
 }
+.rating-row__avatar--photo {
+  object-fit: cover;
+}
 .rating-row.is-current .rating-row__avatar {
   background: var(--accent-strong);
   color: #06210f;

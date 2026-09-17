@@ -10,6 +10,7 @@ import type {
   OpenMatch,
   OpenMatchOrganizer,
   OpenMatchParticipant,
+  OpenMatchRole,
   PlayerProfile,
   SkillLevel,
 } from '../types'
@@ -769,4 +770,69 @@ export async function joinOpenMatch(matchId: string): Promise<OpenMatch[]> {
   }
 
   return extractOpenMatches(data).map(toOpenMatch)
+}
+
+// Роль пользователя в открытых играх, выход и отмена — через отдельную Edge
+// Function open-match-actions (те же Authorization/initData, что у остальных
+// Telegram-функций). Отдельный низкоуровневый вызов, а не переиспользование
+// callOpenMatches, чтобы не трогать уже рабочие fetchOpenMatches/createOpenMatch/
+// joinOpenMatch — они вызывают другую функцию (open-matches).
+async function callOpenMatchActions(extraBody: Record<string, unknown>) {
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error(NOT_CONFIGURED_MESSAGE)
+  }
+
+  const initData = getTelegramInitData()
+  if (!initData) {
+    throw new Error(OPEN_MATCHES_NOT_IN_TELEGRAM_MESSAGE)
+  }
+
+  return supabase.functions.invoke('open-match-actions', {
+    headers: {
+      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+    },
+    body: { initData, ...extraBody },
+  })
+}
+
+interface RawOpenMatchRole {
+  matchId?: string
+  match_id?: string
+  isOrganizer?: boolean
+  is_organizer?: boolean
+}
+
+export async function fetchOpenMatchRoles(): Promise<Record<string, OpenMatchRole>> {
+  const { data, error } = await callOpenMatchActions({ action: 'roles' })
+
+  if (error) {
+    throw new Error(await resolveFunctionErrorMessage(error))
+  }
+
+  const rawRoles = (data as { roles?: RawOpenMatchRole[] } | null)?.roles ?? []
+  const roles: Record<string, OpenMatchRole> = {}
+
+  for (const raw of rawRoles) {
+    const matchId = raw.matchId ?? raw.match_id
+    if (!matchId) continue
+    roles[matchId] = raw.isOrganizer ?? raw.is_organizer ? 'organizer' : 'participant'
+  }
+
+  return roles
+}
+
+export async function leaveOpenMatch(matchId: string): Promise<void> {
+  const { error } = await callOpenMatchActions({ action: 'leave', matchId })
+
+  if (error) {
+    throw new Error(await resolveFunctionErrorMessage(error))
+  }
+}
+
+export async function cancelOpenMatch(matchId: string): Promise<void> {
+  const { error } = await callOpenMatchActions({ action: 'cancel', matchId })
+
+  if (error) {
+    throw new Error(await resolveFunctionErrorMessage(error))
+  }
 }

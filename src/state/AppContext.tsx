@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { SLOT_DURATION_MINUTES, TIME_SLOTS } from '../data/constants'
 import {
   cancelBooking,
+  cancelOpenMatch as apiCancelOpenMatch,
   createAdminCourt,
   createBooking,
   createOpenMatch as apiCreateOpenMatch,
@@ -10,9 +11,11 @@ import {
   fetchCourts,
   fetchLeaderboard,
   fetchMyBookings,
+  fetchOpenMatchRoles,
   fetchOpenMatches,
   fetchPlayerProfile,
   joinOpenMatch as apiJoinOpenMatch,
+  leaveOpenMatch as apiLeaveOpenMatch,
   updateAdminCourt,
   updatePlayerProfile,
   uploadProfileAvatar,
@@ -27,6 +30,7 @@ import type {
   Game,
   LeaderboardEntry,
   OpenMatch,
+  OpenMatchRole,
   PlayerProfile,
   SkillLevel,
   Slot,
@@ -258,10 +262,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [adminDashboardReloadToken])
 
-  // Открытые игры из Edge Function open-matches — доступны только внутри
-  // Telegram, вне его не запрашиваем вовсе (тот же приём, что и для admin
-  // dashboard: Promise-цепочка, чтобы не дёргать setState синхронно в эффекте).
+  // Открытые игры + роль текущего пользователя в них — из Edge Function
+  // open-matches и open-match-actions (action: 'roles'), загружаются вместе
+  // при каждом reloadOpenMatches(). Доступны только внутри Telegram, вне его
+  // не запрашиваем вовсе (тот же приём, что и для admin dashboard: Promise-
+  // цепочка, чтобы не дёргать setState синхронно в эффекте).
   const [openMatches, setOpenMatches] = useState<OpenMatch[]>([])
+  const [openMatchRoles, setOpenMatchRoles] = useState<Record<string, OpenMatchRole>>({})
   const [openMatchesError, setOpenMatchesError] = useState<string | null>(null)
   const [openMatchesReloadToken, setOpenMatchesReloadToken] = useState(0)
   const [openMatchesLoadedToken, setOpenMatchesLoadedToken] = useState(-1)
@@ -271,10 +278,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let cancelled = false
 
     Promise.resolve()
-      .then(() => (getTelegramInitData() ? fetchOpenMatches() : undefined))
-      .then((data) => {
-        if (cancelled || data === undefined) return
-        setOpenMatches(data)
+      .then(() => (getTelegramInitData() ? Promise.all([fetchOpenMatches(), fetchOpenMatchRoles()]) : undefined))
+      .then((result) => {
+        if (cancelled || result === undefined) return
+        const [matches, roles] = result
+        setOpenMatches(matches)
+        setOpenMatchRoles(roles)
         setOpenMatchesError(null)
       })
       .catch((error: unknown) => {
@@ -420,6 +429,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setOpenMatches(matches)
   }
 
+  // leave/cancel не возвращают обновлённые данные сами — перезапрашиваем
+  // открытые игры и роли явно. Отмена организатором дополнительно освобождает
+  // саму бронь, поэтому обновляем ещё «Мои игры» и занятость кортов.
+  const leaveOpenMatch = async (matchId: string) => {
+    await apiLeaveOpenMatch(matchId)
+    reloadOpenMatches()
+  }
+
+  const cancelOpenMatch = async (matchId: string) => {
+    await apiCancelOpenMatch(matchId)
+    reloadOpenMatches()
+    reloadMyGames()
+    reloadBookings()
+  }
+
   const value: AppContextValue = {
     activeTab,
     setActiveTab,
@@ -464,6 +488,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     reloadOpenMatches,
     createOpenMatch,
     joinOpenMatch,
+    openMatchRoles,
+    leaveOpenMatch,
+    cancelOpenMatch,
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

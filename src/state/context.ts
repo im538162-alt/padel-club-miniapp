@@ -5,6 +5,7 @@ import type {
   Game,
   LeaderboardEntry,
   OpenMatch,
+  OpenMatchRole,
   PlayerProfile,
   SkillLevel,
   Slot,
@@ -55,6 +56,9 @@ export interface AppContextValue {
   reloadOpenMatches: () => void
   createOpenMatch: (bookingId: string, capacity: 2 | 4) => Promise<void>
   joinOpenMatch: (matchId: string) => Promise<void>
+  openMatchRoles: Record<string, OpenMatchRole>
+  leaveOpenMatch: (matchId: string) => Promise<void>
+  cancelOpenMatch: (matchId: string) => Promise<void>
 }
 
 export const AppContext = createContext<AppContextValue | null>(null)

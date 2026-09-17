@@ -1,18 +1,37 @@
 import { useState } from 'react'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { StateNotice } from '../components/StateNotice'
 import { SKILL_LEVEL_LABELS } from '../data/skillLevels'
 import { useAppContext } from '../state/context'
 import { formatDateWithWeekday } from '../utils/date'
+import type { OpenMatch } from '../types'
 
 interface Props {
   onBack: () => void
 }
 
 export function OpenMatchesScreen({ onBack }: Props) {
-  const { openMatches, openMatchesLoading, openMatchesError, reloadOpenMatches, joinOpenMatch } =
-    useAppContext()
+  const {
+    openMatches,
+    openMatchesLoading,
+    openMatchesError,
+    reloadOpenMatches,
+    joinOpenMatch,
+    openMatchRoles,
+    leaveOpenMatch,
+    cancelOpenMatch,
+  } = useAppContext()
+
   const [joiningMatchId, setJoiningMatchId] = useState<string | null>(null)
   const [joinError, setJoinError] = useState<{ matchId: string; message: string } | null>(null)
+
+  const [leaveTarget, setLeaveTarget] = useState<OpenMatch | null>(null)
+  const [isLeaving, setIsLeaving] = useState(false)
+  const [leaveError, setLeaveError] = useState<string | null>(null)
+
+  const [cancelTarget, setCancelTarget] = useState<OpenMatch | null>(null)
+  const [isCancelling, setIsCancelling] = useState(false)
+  const [cancelError, setCancelError] = useState<string | null>(null)
 
   const handleJoin = async (matchId: string) => {
     setJoinError(null)
@@ -26,6 +45,58 @@ export function OpenMatchesScreen({ onBack }: Props) {
       })
     } finally {
       setJoiningMatchId(null)
+    }
+  }
+
+  const openLeaveConfirm = (match: OpenMatch) => {
+    setLeaveError(null)
+    setLeaveTarget(match)
+  }
+
+  const dismissLeaveConfirm = () => {
+    if (isLeaving) return
+    setLeaveTarget(null)
+    setLeaveError(null)
+  }
+
+  const handleLeaveConfirm = async () => {
+    if (!leaveTarget) return
+
+    setLeaveError(null)
+    setIsLeaving(true)
+    try {
+      await leaveOpenMatch(leaveTarget.id)
+      setLeaveTarget(null)
+    } catch (error) {
+      setLeaveError(error instanceof Error ? error.message : 'Не удалось выйти из игры')
+    } finally {
+      setIsLeaving(false)
+    }
+  }
+
+  const openCancelConfirm = (match: OpenMatch) => {
+    setCancelError(null)
+    setCancelTarget(match)
+  }
+
+  const dismissCancelConfirm = () => {
+    if (isCancelling) return
+    setCancelTarget(null)
+    setCancelError(null)
+  }
+
+  const handleCancelConfirm = async () => {
+    if (!cancelTarget) return
+
+    setCancelError(null)
+    setIsCancelling(true)
+    try {
+      await cancelOpenMatch(cancelTarget.id)
+      setCancelTarget(null)
+    } catch (error) {
+      setCancelError(error instanceof Error ? error.message : 'Не удалось отменить игру')
+    } finally {
+      setIsCancelling(false)
     }
   }
 
@@ -66,6 +137,9 @@ export function OpenMatchesScreen({ onBack }: Props) {
           {openMatches.map((match) => {
             const isJoining = joiningMatchId === match.id
             const matchJoinError = joinError?.matchId === match.id ? joinError.message : null
+            const role = match.isCurrentUserParticipant
+              ? (openMatchRoles[match.id] ?? 'participant')
+              : null
 
             return (
               <div key={match.id} className="game-card">
@@ -129,8 +203,22 @@ export function OpenMatchesScreen({ onBack }: Props) {
                   )}
                 </div>
                 <div className="game-card__status">
-                  {match.isCurrentUserParticipant ? (
-                    <span className="status-pill status-pill--upcoming">Вы участвуете</span>
+                  {role === 'organizer' ? (
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--small"
+                      onClick={() => openCancelConfirm(match)}
+                    >
+                      Отменить игру
+                    </button>
+                  ) : role === 'participant' ? (
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--small"
+                      onClick={() => openLeaveConfirm(match)}
+                    >
+                      Выйти из игры
+                    </button>
                   ) : match.availableSpots > 0 ? (
                     <button
                       type="button"
@@ -148,6 +236,32 @@ export function OpenMatchesScreen({ onBack }: Props) {
             )
           })}
         </div>
+      )}
+
+      {leaveTarget && (
+        <ConfirmDialog
+          title="Выйти из игры?"
+          message="Ваше место сразу станет доступно другим игрокам."
+          confirmLabel="Выйти"
+          confirmingLabel="Выходим…"
+          isConfirming={isLeaving}
+          error={leaveError}
+          onConfirm={handleLeaveConfirm}
+          onDismiss={dismissLeaveConfirm}
+        />
+      )}
+
+      {cancelTarget && (
+        <ConfirmDialog
+          title="Отменить открытую игру?"
+          message="Бронь будет отменена, а слот снова станет свободным."
+          confirmLabel="Отменить игру"
+          confirmingLabel="Отменяем…"
+          isConfirming={isCancelling}
+          error={cancelError}
+          onConfirm={handleCancelConfirm}
+          onDismiss={dismissCancelConfirm}
+        />
       )}
     </div>
   )

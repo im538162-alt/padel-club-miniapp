@@ -116,3 +116,8 @@ export interface OpenMatch {
   organizer: OpenMatchOrganizer | null
   participants: OpenMatchParticipant[]
 }
+
+// Роль текущего пользователя в открытой игре — из Edge Function
+// open-match-actions (action: 'roles'). Игра отсутствует в мапе, если
+// пользователь в ней не участвует.
+export type OpenMatchRole = 'organizer' | 'participant'

@@ -1,3 +1,4 @@
+import { AuthGate } from './components/AuthGate'
 import { BottomNav } from './components/BottomNav'
 import { HomeScreen } from './screens/HomeScreen'
 import { MyGamesScreen } from './screens/MyGamesScreen'
@@ -25,9 +26,11 @@ function AppShell() {
 
 function App() {
   return (
-    <AppProvider>
-      <AppShell />
-    </AppProvider>
+    <AuthGate>
+      <AppProvider>
+        <AppShell />
+      </AppProvider>
+    </AuthGate>
   )
 }
 

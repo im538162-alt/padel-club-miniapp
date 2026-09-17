@@ -344,22 +344,28 @@ function toPlayerProfile(raw: RawPlayerProfile): PlayerProfile {
   }
 }
 
+// Telegram-режим: initData + явный apikey-Authorization (см. Fix Edge Function
+// authorization). Вне Telegram (PWA/email) initData нет — тогда Authorization
+// не подменяем вовсе, и supabase-js сам подставляет JWT текущей Auth-сессии;
+// в body в этом случае initData не отправляется.
 export async function fetchPlayerProfile(): Promise<PlayerProfile> {
   if (!isSupabaseConfigured || !supabase) {
     throw new Error(NOT_CONFIGURED_MESSAGE)
   }
 
   const initData = getTelegramInitData()
-  if (!initData) {
-    throw new Error(NOT_IN_TELEGRAM_MESSAGE)
-  }
 
-  const { data, error } = await supabase.functions.invoke('player-profile', {
-    headers: {
-      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-    },
-    body: { initData, action: 'get' },
-  })
+  const { data, error } = await supabase.functions.invoke(
+    'player-profile',
+    initData
+      ? {
+          headers: {
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: { initData, action: 'get' },
+        }
+      : { body: { action: 'get' } },
+  )
 
   if (error) {
     throw new Error(await resolveFunctionErrorMessage(error))
@@ -377,22 +383,24 @@ export async function updatePlayerProfile(input: UpdatePlayerProfileInput): Prom
   }
 
   const initData = getTelegramInitData()
-  if (!initData) {
-    throw new Error(NOT_IN_TELEGRAM_MESSAGE)
+  const updateFields = {
+    action: 'update' as const,
+    displayName: input.displayName,
+    city: input.city,
+    skillLevel: input.skillLevel,
   }
 
-  const { error } = await supabase.functions.invoke('player-profile', {
-    headers: {
-      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-    },
-    body: {
-      initData,
-      action: 'update',
-      displayName: input.displayName,
-      city: input.city,
-      skillLevel: input.skillLevel,
-    },
-  })
+  const { error } = await supabase.functions.invoke(
+    'player-profile',
+    initData
+      ? {
+          headers: {
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: { initData, ...updateFields },
+        }
+      : { body: updateFields },
+  )
 
   if (error) {
     throw new Error(await resolveFunctionErrorMessage(error))

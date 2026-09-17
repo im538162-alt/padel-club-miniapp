@@ -2,15 +2,31 @@ import { useRef, useState, type ChangeEvent } from 'react'
 import { EditProfileModal } from '../components/EditProfileModal'
 import { StateNotice } from '../components/StateNotice'
 import { SKILL_LEVEL_LABELS } from '../data/skillLevels'
+import { signOutEmailSession } from '../lib/auth'
 import { useAppContext } from '../state/context'
+import { getTelegramInitData } from '../utils/telegram'
 
 export function ProfileScreen() {
   const { profile, profileLoading, profileError, reloadProfile, updateProfile, uploadAvatar } =
     useAppContext()
+  const isTelegram = Boolean(getTelegramInitData())
   const [isEditing, setIsEditing] = useState(false)
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
   const [avatarError, setAvatarError] = useState<string | null>(null)
+  const [isSigningOut, setIsSigningOut] = useState(false)
+  const [signOutError, setSignOutError] = useState<string | null>(null)
   const avatarInputRef = useRef<HTMLInputElement>(null)
+
+  const handleSignOut = async () => {
+    setSignOutError(null)
+    setIsSigningOut(true)
+    try {
+      await signOutEmailSession()
+    } catch (error) {
+      setSignOutError(error instanceof Error ? error.message : 'Не удалось выйти')
+      setIsSigningOut(false)
+    }
+  }
 
   const handleAvatarButtonClick = () => {
     avatarInputRef.current?.click()
@@ -93,6 +109,22 @@ export function ProfileScreen() {
           <button type="button" className="btn btn--primary btn--full" onClick={() => setIsEditing(true)}>
             Редактировать профиль
           </button>
+
+          {!isTelegram && (
+            <>
+              {signOutError && (
+                <StateNotice kind="error" title="Не удалось выйти" description={signOutError} />
+              )}
+              <button
+                type="button"
+                className="btn btn--ghost btn--full"
+                onClick={handleSignOut}
+                disabled={isSigningOut}
+              >
+                {isSigningOut ? 'Выходим…' : 'Выйти'}
+              </button>
+            </>
+          )}
         </>
       )}
 

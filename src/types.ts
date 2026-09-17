@@ -121,3 +121,17 @@ export interface OpenMatch {
 // open-match-actions (action: 'roles'). Игра отсутствует в мапе, если
 // пользователь в ней не участвует.
 export type OpenMatchRole = 'organizer' | 'participant'
+
+export interface MatchMessageSender {
+  displayName: string
+  avatarUrl: string | null
+}
+
+// Сообщение чата открытой игры — приходит только из Edge Function match-chat,
+// доступной исключительно внутри Telegram участникам игры.
+export interface MatchMessage {
+  id: string
+  body: string
+  createdAt: string
+  sender: MatchMessageSender
+}

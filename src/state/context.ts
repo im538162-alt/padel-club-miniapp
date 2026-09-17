@@ -4,6 +4,7 @@ import type {
   CourtInfo,
   Game,
   LeaderboardEntry,
+  MatchMessage,
   OpenMatch,
   OpenMatchRole,
   PlayerProfile,
@@ -59,6 +60,11 @@ export interface AppContextValue {
   openMatchRoles: Record<string, OpenMatchRole>
   leaveOpenMatch: (matchId: string) => Promise<void>
   cancelOpenMatch: (matchId: string) => Promise<void>
+  matchMessages: MatchMessage[]
+  matchMessagesLoading: boolean
+  matchMessagesError: string | null
+  reloadMatchMessages: (matchId: string) => Promise<void>
+  sendMatchMessage: (matchId: string, message: string) => Promise<void>
 }
 
 export const AppContext = createContext<AppContextValue | null>(null)

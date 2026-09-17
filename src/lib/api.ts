@@ -7,6 +7,7 @@ import type {
   AdminDashboard,
   CourtInfo,
   LeaderboardEntry,
+  MatchMessage,
   OpenMatch,
   OpenMatchOrganizer,
   OpenMatchParticipant,
@@ -24,6 +25,8 @@ const NOT_IN_TELEGRAM_MESSAGE =
 const ADMIN_NOT_IN_TELEGRAM_MESSAGE = 'Админ-панель доступна только внутри Telegram.'
 
 const OPEN_MATCHES_NOT_IN_TELEGRAM_MESSAGE = 'Открытые игры доступны только внутри Telegram.'
+
+const MATCH_CHAT_NOT_IN_TELEGRAM_MESSAGE = 'Чат доступен только внутри Telegram.'
 
 export interface RemoteBooking {
   courtId: number
@@ -835,4 +838,87 @@ export async function cancelOpenMatch(matchId: string): Promise<void> {
   if (error) {
     throw new Error(await resolveFunctionErrorMessage(error))
   }
+}
+
+// Чат открытой игры — через Edge Function match-chat: action 'list' отдаёт
+// историю сообщений, action 'send' добавляет сообщение; оба возвращают один и
+// тот же { messages: [...] } — актуальный список целиком.
+interface RawMatchMessageSender {
+  display_name?: string
+  displayName?: string
+  avatar_path?: string | null
+  avatarPath?: string | null
+}
+
+interface RawMatchMessage {
+  id: string
+  body?: string
+  message?: string
+  created_at?: string
+  createdAt?: string
+  sender?: RawMatchMessageSender | null
+}
+
+function toMatchMessage(raw: RawMatchMessage): MatchMessage {
+  const sender = raw.sender
+  const avatarPath = sender?.avatar_path ?? sender?.avatarPath ?? null
+
+  return {
+    id: String(raw.id),
+    body: raw.body ?? raw.message ?? '',
+    createdAt: raw.created_at ?? raw.createdAt ?? '',
+    sender: {
+      displayName: sender?.display_name ?? sender?.displayName ?? '',
+      avatarUrl: buildAvatarUrl(avatarPath),
+    },
+  }
+}
+
+function extractMatchMessages(data: unknown): RawMatchMessage[] {
+  const wrapped = data as { messages?: unknown } | null
+  return Array.isArray(wrapped?.messages) ? (wrapped as { messages: RawMatchMessage[] }).messages : []
+}
+
+function toSortedMatchMessages(data: unknown): MatchMessage[] {
+  return extractMatchMessages(data)
+    .map(toMatchMessage)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+}
+
+async function callMatchChat(extraBody: Record<string, unknown>) {
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error(NOT_CONFIGURED_MESSAGE)
+  }
+
+  const initData = getTelegramInitData()
+  if (!initData) {
+    throw new Error(MATCH_CHAT_NOT_IN_TELEGRAM_MESSAGE)
+  }
+
+  return supabase.functions.invoke('match-chat', {
+    headers: {
+      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+    },
+    body: { initData, ...extraBody },
+  })
+}
+
+export async function fetchMatchMessages(matchId: string): Promise<MatchMessage[]> {
+  const { data, error } = await callMatchChat({ action: 'list', matchId })
+
+  if (error) {
+    throw new Error(await resolveFunctionErrorMessage(error))
+  }
+
+  return toSortedMatchMessages(data)
+}
+
+export async function sendMatchMessage(matchId: string, message: string): Promise<MatchMessage[]> {
+  const { data, error } = await callMatchChat({ action: 'send', matchId, message })
+
+  if (error) {
+    throw new Error(await resolveFunctionErrorMessage(error))
+  }
+
+  return toSortedMatchMessages(data)
 }

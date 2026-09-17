@@ -8,9 +8,10 @@ import type { OpenMatch } from '../types'
 
 interface Props {
   onBack: () => void
+  onOpenChat: (match: OpenMatch) => void
 }
 
-export function OpenMatchesScreen({ onBack }: Props) {
+export function OpenMatchesScreen({ onBack, onOpenChat }: Props) {
   const {
     openMatches,
     openMatchesLoading,
@@ -204,21 +205,39 @@ export function OpenMatchesScreen({ onBack }: Props) {
                 </div>
                 <div className="game-card__status">
                   {role === 'organizer' ? (
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--small"
-                      onClick={() => openCancelConfirm(match)}
-                    >
-                      Отменить игру
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--small"
+                        onClick={() => onOpenChat(match)}
+                      >
+                        Чат
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--small"
+                        onClick={() => openCancelConfirm(match)}
+                      >
+                        Отменить игру
+                      </button>
+                    </>
                   ) : role === 'participant' ? (
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--small"
-                      onClick={() => openLeaveConfirm(match)}
-                    >
-                      Выйти из игры
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--small"
+                        onClick={() => onOpenChat(match)}
+                      >
+                        Чат
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--small"
+                        onClick={() => openLeaveConfirm(match)}
+                      >
+                        Выйти из игры
+                      </button>
+                    </>
                   ) : match.availableSpots > 0 ? (
                     <button
                       type="button"

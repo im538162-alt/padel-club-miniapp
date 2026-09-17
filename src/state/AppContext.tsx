@@ -11,11 +11,13 @@ import {
   fetchCourts,
   fetchLeaderboard,
   fetchMyBookings,
+  fetchMatchMessages,
   fetchOpenMatchRoles,
   fetchOpenMatches,
   fetchPlayerProfile,
   joinOpenMatch as apiJoinOpenMatch,
   leaveOpenMatch as apiLeaveOpenMatch,
+  sendMatchMessage as apiSendMatchMessage,
   updateAdminCourt,
   updatePlayerProfile,
   uploadProfileAvatar,
@@ -29,6 +31,7 @@ import type {
   CourtInfo,
   Game,
   LeaderboardEntry,
+  MatchMessage,
   OpenMatch,
   OpenMatchRole,
   PlayerProfile,
@@ -444,6 +447,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
     reloadBookings()
   }
 
+  // Чат конкретной открытой игры. matchId известен только когда открыт
+  // MatchChatScreen, поэтому это не "reload token"-эффект, как остальные
+  // данные здесь, а обычные async-методы: экран сам вызывает
+  // reloadMatchMessages при открытии и раз в 10 секунд своим таймером.
+  const [matchMessages, setMatchMessages] = useState<MatchMessage[]>([])
+  const [matchMessagesLoading, setMatchMessagesLoading] = useState(false)
+  const [matchMessagesError, setMatchMessagesError] = useState<string | null>(null)
+
+  const reloadMatchMessages = async (matchId: string) => {
+    setMatchMessagesLoading(true)
+    setMatchMessagesError(null)
+    try {
+      const messages = await fetchMatchMessages(matchId)
+      setMatchMessages(messages)
+    } catch (error) {
+      setMatchMessagesError(error instanceof Error ? error.message : 'Не удалось загрузить сообщения')
+    } finally {
+      setMatchMessagesLoading(false)
+    }
+  }
+
+  const sendMatchMessage = async (matchId: string, message: string) => {
+    const messages = await apiSendMatchMessage(matchId, message)
+    setMatchMessages(messages)
+  }
+
   const value: AppContextValue = {
     activeTab,
     setActiveTab,
@@ -491,6 +520,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     openMatchRoles,
     leaveOpenMatch,
     cancelOpenMatch,
+    matchMessages,
+    matchMessagesLoading,
+    matchMessagesError,
+    reloadMatchMessages,
+    sendMatchMessage,
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

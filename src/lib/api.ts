@@ -158,27 +158,37 @@ async function resolveFunctionErrorMessage(error: unknown): Promise<string> {
   return 'Не удалось выполнить запрос. Попробуйте ещё раз.'
 }
 
+// Бронь всегда длится ровно 1 час.
+function addOneHour(startTime: string): string {
+  const [hours, minutes] = startTime.split(':').map(Number)
+  const endHours = (hours + 1) % 24
+  return `${String(endHours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+}
+
 export async function createBooking(input: CreateBookingInput): Promise<void> {
   if (!isSupabaseConfigured || !supabase) {
     throw new Error(NOT_CONFIGURED_MESSAGE)
   }
 
   const initData = getTelegramInitData()
-  if (!initData) {
-    throw new Error(NOT_IN_TELEGRAM_MESSAGE)
+  const createFields = {
+    courtId: input.courtId,
+    bookingDate: input.bookingDate,
+    startTime: input.startTime,
+    endTime: addOneHour(input.startTime),
   }
 
-  const { error } = await supabase.functions.invoke('create-booking-v4', {
-    headers: {
-      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-    },
-    body: {
-      initData,
-      courtId: input.courtId,
-      bookingDate: input.bookingDate,
-      startTime: input.startTime,
-    },
-  })
+  const { error } = await supabase.functions.invoke(
+    'create-booking-v4',
+    initData
+      ? {
+          headers: {
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: { initData, ...createFields },
+        }
+      : { body: createFields },
+  )
 
   if (error) {
     throw new Error(await resolveFunctionErrorMessage(error))
@@ -191,19 +201,19 @@ export async function cancelBooking(input: CancelBookingInput): Promise<void> {
   }
 
   const initData = getTelegramInitData()
-  if (!initData) {
-    throw new Error(NOT_IN_TELEGRAM_MESSAGE)
-  }
+  const cancelFields = { bookingId: input.bookingId }
 
-  const { error } = await supabase.functions.invoke('cancel-booking', {
-    headers: {
-      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-    },
-    body: {
-      initData,
-      bookingId: input.bookingId,
-    },
-  })
+  const { error } = await supabase.functions.invoke(
+    'cancel-booking',
+    initData
+      ? {
+          headers: {
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: { initData, ...cancelFields },
+        }
+      : { body: cancelFields },
+  )
 
   if (error) {
     throw new Error(await resolveFunctionErrorMessage(error))
@@ -246,16 +256,18 @@ export async function fetchMyBookings(): Promise<MyBookingRow[]> {
   }
 
   const initData = getTelegramInitData()
-  if (!initData) {
-    throw new Error(NOT_IN_TELEGRAM_MESSAGE)
-  }
 
-  const { data, error } = await supabase.functions.invoke('my-bookings-v2', {
-    headers: {
-      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-    },
-    body: { initData },
-  })
+  const { data, error } = await supabase.functions.invoke(
+    'my-bookings-v2',
+    initData
+      ? {
+          headers: {
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: { initData },
+        }
+      : { body: {} },
+  )
 
   if (error) {
     throw new Error(await resolveFunctionErrorMessage(error))
